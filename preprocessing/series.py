@@ -68,6 +68,7 @@ def create_dataset_as_supervised(table, sensorId):
     yt = df['value'].tolist()
     decide_input(yt,16,1)
     data = series_to_supervised(df, 3)
+    print("data", data)
     print("DATA>>>>>>>", data.shape[1])
     X = np.array(data.iloc[:,:3])
     print("X>>>>>>", X)
@@ -76,10 +77,22 @@ def create_dataset_as_supervised(table, sensorId):
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.33)
     return X_train, X_test, y_train, y_test
     
-def create_dataset(table, sensorId, limit=20):    
+def create_dataset(table, sensorId, limit = True):    
     db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
     conn = create_engine(db_connection)
-    query = "SELECT * FROM " + table + " where sensortmId="+ sensorId + " limit 20"
+    if "sensortmmeasure" in table:
+        if limit:
+            query = "SELECT * FROM " + table + " where sensortmId="+ sensorId + " limit 10000"
+        else:
+            query = "SELECT * FROM " + table + " where sensortmId="+ sensorId 
+    
+    if "sensortgmeasure" in table:
+          if limit:
+            query = "SELECT * FROM " + table + " where sensortgId="+ sensorId + " limit 10000"
+          else:
+            query = "SELECT * FROM " + table + " where sensortgId="+ sensorId 
+    
+    
     df = pd.read_sql(query , conn)
     print(df)
     return df

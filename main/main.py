@@ -22,7 +22,7 @@ def main():
     print("X_Train SHAPE", X_train.shape)
     
     model = model_with_quantiles(X_train.shape[1], X_train.shape[2])
-    
+    #https://www.evergreeninnovations.co/blog-quantile-loss-function-for-machine-learning/
     # The lambda function is used to input the quantile value to the quantile
     # regression loss function. Keras only allows two inputs in user-defined loss
     # functions, predictions and actual values.
