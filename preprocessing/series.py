@@ -11,6 +11,7 @@ import numpy as np
 from scipy.ndimage.interpolation import shift
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
+import datetime
 def series_to_supervised(df, n_in=1, n_out=1, dropnan=True):
    """
    Frame a time series as a supervised learning dataset.
@@ -56,6 +57,7 @@ def plot(y):
 def resampler():
     return True
 
+
 def create_dataset_as_supervised(table, sensorId):
     df = create_dataset(table, sensorId)
     y = df['value'][:14]
@@ -92,10 +94,30 @@ def create_dataset(table, sensorId, limit = True):
           else:
             query = "SELECT * FROM " + table + " where sensortgId="+ sensorId 
     
-    
     df = pd.read_sql(query , conn)
+    
+    """
+    #create mask for operation events, stating possible anomalies
+    df['anomaly'] = 0 
+    query = "SELECT * FROM ordemdata"
+    df_ordem = pd.read_sql(query, conn)
+    
+    for index, row in df_ordem.iterrows():
+        if row['descricao']=='Percepcao':
+            date_event = row['date']
+            #find dates 2 days before and consider it as anomaly
+            date_N = date_N_days_ago(date_event, 2)
+            for index_df, row_df in df.iterrows():
+                if row_df['date'] >= date_N and row_df['date'] <= date_event:
+                    df['anomaly'] = 1
+               
     print(df)
+    """
+    
     return df
+
+def date_N_days_ago(date, days):
+    return date - datetime.timedelta(days=days)
     
 def correlation_time_series_and_lag():
     return True
