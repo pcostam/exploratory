@@ -6,7 +6,7 @@ Created on Tue Feb  4 16:41:22 2020
 """
 from matplotlib import pyplot
 from preprocessing.series import create_dataset
-from sqlalchemy import create_engine, text, update
+from sqlalchemy import create_engine, text
 import numpy as np
 import mysql.connector
 from sklearn.externals import joblib
@@ -19,12 +19,29 @@ from scipy.stats import norm
 import Pvalue
 
 from scipy.stats import boxcox, yeojohnson
-class Sensor:
-    def __init__(self, name, idSensor):
-        self.name = name
-        self.id = idSensor
-        self.instant = -1
- 
+class Sensor(object):
+    flowSensorsIds = [1, 2, 4, 6, 9, 10, 12, 14]
+    pressureSensorsIds = [3, 5, 7, 8, 11, 13, 15]
+    #in order
+    sensorNeighbors =  {1:[10,14,12], 2:[4,6,9,12], 3:[7,5,8,11], 4:[6,2,9,12], 5:[7,3,9,11], 
+                                 6:[4,2,9,12], 7:[5,3,8,11], 8:[11,13,5,7], 9:[12, 14, 4, 6], 10:[1, 14, 12], 
+                                 11:[13, 8, 15, 5, 7], 12:[14, 9, 4, 6], 13:[15, 11, 8], 14:[10, 12], 15:[13,11,8]}
+    @classmethod
+    def getSensorNeighbors(cls):
+        return cls.sensorNeighbors
+    
+    @classmethod
+    def getFlowSensorsIds(cls):
+        return cls.flowSensorsIds
+    
+    @classmethod
+    def getPressureSensorsIds(cls):
+        return cls.pressureSensorsIds
+    
+    @classmethod
+    def getSensorIds(cls):
+        return cls.sensorNeighbors.keys()
+    
     def make_connection(db_name):
         db = mysql.connector.connect(
                 host="127.0.0.1",
@@ -45,16 +62,16 @@ class Sensor:
         
         
         
-    def update(self, actual_measure, prev_measure, neighbors_ids, neighbors_measures, instant):
-        self.instant += 1
+    def update(idSensor, actual_measure, prev_measure, neighbors_ids, neighbors_measures, instant):
         diff = float(round(prev_measure - actual_measure, 2))
         
         db, cursor = Sensor.make_connection("infraquinta")
-        Sensor.populate_differences(db, cursor, self.id, diff, instant, self.id)
+        Sensor.populate_differences(db, cursor, idSensor, diff, instant, idSensor)
       
-        for i in range(0, len(neighbors_measures)):
-                diff = float(round(actual_measure - neighbors_measures[i],2))
-                Sensor.populate_differences(db, cursor, self.id, diff, instant, neighbors_ids[i])
+        size = len(neighbors_measures)
+        for i in range(0, size):
+                diff = float(round(neighbors_measures[i]-actual_measure ,2))
+                Sensor.populate_differences(db, cursor, idSensor, diff, instant, neighbors_ids[i])
         
         cursor.close()
         db.close()
@@ -90,22 +107,28 @@ class Sensor:
         return encoded
         
     def write_to_disk():
-        df = create_dataset("sensortgmeasure", "12", limit=False)
-        value = list(df["value"])
-        print("value", len(value))
-        
-        neighbor_1 = create_dataset("sensortgmeasure", "10", limit=False)
-        neighbor_1_val = neighbor_1["value"]
-        neighbor_2 = create_dataset("sensortgmeasure", "1", limit=False)
-        neighbor_2_val = neighbor_2["value"]
-      
-        sensor = Sensor("RPR Caudal Grv", 12)
-        
-        for i in range(0,len(df)):
-            try:
-                sensor.update(value[i], value[i-1], [10,1], [neighbor_1_val[i], neighbor_2_val[i]], str(df['date'][i]))
-            except IndexError:
-                sensor.update(value[i], 0, [10,1], [neighbor_1_val[i], neighbor_2_val[i]], str(df['date'][i]))
+        for idSensor in Sensor.getSensorIds():
+            df = create_dataset("sensortgmeasure", str(idSensor), limit=False)
+            value = list(df["value"])
+            neighbors = []
+            idNeighborsList = list(Sensor.getSensorNeighbors()[idSensor])
+            for idNeighbor in idNeighborsList:
+                df_neighbor = create_dataset("sensortgmeasure", str(idNeighbor), limit=False)
+                df_neighbor_val = df_neighbor["value"]
+                neighbors.append(df_neighbor_val)
+            
+            print("idsensor", idSensor)
+            print(neighbors)
+         
+            size = len(value)
+         
+            for i in range(0,size):
+                try:
+                    Sensor.update(idSensor, value[i], value[i-1], idNeighborsList, [neighbor[i] for neighbor in neighbors], str(df['date'][i]))
+                except IndexError:
+                    Sensor.update(idSensor, value[i], 0, idNeighborsList, [neighbor[i] for neighbor in neighbors], str(df['date'][i]))
+                except KeyError as e:
+                    print("ERROR", e)
     
     def close_connection(cursor, db):
         cursor.close()
@@ -180,20 +203,8 @@ class Sensor:
         f = open('report.html','w')
         f.write(html_string)
         f.close()
-    def test():
-        db, cursor = Sensor.make_connection("infraquinta")
         
-        query = "SELECT difference FROM differencesmeasuretg WHERE idSensor=%s and diffWith=%s"
-        sensorId = 12 
-        diffId = 1
-        
-        cursor.execute(query, (sensorId, diffId))
-        print("type", type(cursor))
-        
-        measures = list(measure[0] for measure in cursor)
-
-        sample = measures
-        
+    def pvalue_analysis(sample, sensorId, diffId, cursor, db):
         #no transformation
         Sensor.check_for_normality(sample)
         #Fit a normal distribution to the data:
@@ -202,7 +213,7 @@ class Sensor:
         
         plot_url = Sensor.plot_diff_measure(sample, "Histogram with differences between sensor 12 and sensor 1 with no power transformation", "sensor-12-1", mu, std)
         
-        all_url = [("Histogram with differences between sensor 12 and sensor 1 with no power transformation", plot_url)] 
+        all_url = [("Histogram with differences between sensor %s and sensor %s with no power transformation" % (sensorId, diffId), plot_url)] 
      
         #box-cox transformation
         print("min:" , min(sample))
@@ -219,47 +230,36 @@ class Sensor:
         mu, std = norm.fit(posdata)
         Pvalue.pvalue_norm(mu, std)
     
-     
-        
-        #sample = np.array(sample)
-        #sample = sample.reshape((len(sample), 1))
-        #density function
-        #model = KDE(sample)
-        
-        #model = joblib.load('KDE.pkl')
-        
-        #values = np.linspace(-50, 150, 48360)
-        #values = values.reshape((len(sample), 1))
-        
-        #probabilities = model.score_samples(values)
-        #probabilities = np.exp(probabilities)
-        # print("probabilities", probabilities)
-        
-        # approx. 10 percent of smallest pdf-values: lets treat them as outliers 
-        #outlier_inds = np.where(probabilities < np.percentile(probabilities, 10))[0]
-        #outliers = [values[i] for i in outlier_inds]
-       
-        
-        #Sensor.plot_diff_measure(sample, values, probabilities, markers=outliers)
-        plot_url = Sensor.plot_diff_measure(posdata, "Histogram with differences between sensor 12 and sensor 1 applying Box-Cox power transformation", "box-cox-sensor-12-1", mu, std)
-        all_url.append(("Histogram with differences between sensor 12 and sensor 1 applying Box-Cox power transformation", plot_url))
-        
-       
-        
+
+        plot_url = Sensor.plot_diff_measure(posdata, "Histogram with differences between sensor %s and sensor %s applying Box-Cox power transformation" % (sensorId, diffId), "box-cox-sensor-12-1", mu, std)
+        all_url.append(("Histogram with differences between sensor %s and sensor %s applying Box-Cox power transformation" % (sensorId, diffId), plot_url))
         
         data, lmbda = yeojohnson(sample)
        
         mu, std = norm.fit(data)
         Pvalue.pvalue_norm(mu, std)
         Sensor.check_for_normality(data)
-        plot_url = Sensor.plot_diff_measure(data, "Histogram with differences between sensor 12 and sensor 1 applying Yeo-Johnson power transformation", "yeo-johnson-sensor-12-1", mu, std)
-        all_url.append(("Histogram with differences between sensor 12 and sensor 1 applying Yeo-Johnson power transformation", plot_url))
-        
-        
+        plot_url = Sensor.plot_diff_measure(data, "Histogram with differences between sensor %s and sensor %s applying Yeo-Johnson power transformation" % (sensorId, diffId), "yeo-johnson-sensor-12-1", mu, std)
+        all_url.append(("Histogram with differences between sensor %s and sensor %s applying Yeo-Johnson power transformation" % (sensorId, diffId), plot_url))
         
         Sensor.write_report(all_url)
         cursor.close()
         db.close()
+        
+    def test():
+        db, cursor = Sensor.make_connection("infraquinta")
+        
+        for sensorId in Sensor.getSensorIds():
+            for diffId in Sensor.getSensorNeighbors()[sensorId]:
+                query = "SELECT difference FROM differencesmeasuretg WHERE idSensor=%s and diffWith=%s"
+            
+                cursor.execute(query, (sensorId, diffId))
+                print("type", type(cursor))
+            
+                measures = list(measure[0] for measure in cursor)
+                Sensor.pvalue_analysis(measures, sensorId, diffId, cursor, db)
+
+       
         
         
 #todo
