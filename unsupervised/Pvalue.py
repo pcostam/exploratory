@@ -12,13 +12,12 @@ from scipy.stats import norm, combine_pvalues
 
 import numpy as np
 
-class Pvalue(object):
+class Pvalue:
     
     pvalues = {"box-cox":[],"yeo-john":[], "None":[]}
     
-    @classmethod
-    def getPvalues(cls, transform="None"):
-        return cls.pvalues[transform]
+    def getPvalues(self, transform="None"):
+        return self.pvalues[transform]
         
     #kernel density estimation
     #see https://machinelearningmastery.com/probability-density-estimation/
@@ -50,16 +49,28 @@ class Pvalue(object):
     def pvalue_norm(mu, std):
         #critical values from ppf at 1%, 5% and 10%  
         crits = norm.ppf([1-0.01, 1-0.05, 1-0.10], loc=mu, scale=std)
-        
+        pvaluesList = []
         print('critical values from ppf at 1%%, 5%% and 10%% %8.4f %8.4f %8.4f' % (crits[0], crits[1], crits[2]))
         
         for c in crits:
             #right-tailed test
-            pvalue = 1- norm.cdf(c, loc=mu, scale=std)
+            #pvalue = 1 - norm.cdf(c, loc=mu, scale=std)
+            #two-tailed test
+            pvalue = 2*(1 - norm.cdf(c, loc=mu, scale=std))
+            pvaluesList.append(pvalue)
             print("p_value is ", pvalue)
+        
+        return crits, pvaluesList
             
-    def consensus(pvalues, transform ="None"):
+    def consensus(pvalues, crits, transform ="None"):
         stat, pvalue = combine_pvalues(pvalues, method="stouffer")
-        print("stat:" + stat + "pvalue" + pvalue)
+        print("pvalues all:", str(pvalues))
+        print("stat:" + str(stat) + "pvalue" + str(pvalue))
+        if pvalue < 0.5:
+            #flag as anomalous everything with critical value of
+            print("is anomalous for the critical values", str(crits))
+            
+            
+            
         
         
