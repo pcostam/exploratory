@@ -62,13 +62,22 @@ class Pvalue:
         
         return crits, pvaluesList
             
-    def consensus(pvalues, crits, transform ="None"):
+    def consensus(pvalues, crits, alfa=0.05, transform ="None"):
+        #need to be pi/2 on stouffers methods
+        pvalues = [x / 2 for x in pvalues]
+        
+        
         stat, pvalue = combine_pvalues(pvalues, method="stouffer")
         print("pvalues all:", str(pvalues))
         print("stat:" + str(stat) + "pvalue" + str(pvalue))
-        if pvalue < 0.5:
-            #flag as anomalous everything with critical value of
-            print("is anomalous for the critical values", str(crits))
+         
+        if pvalue < alfa:
+            #point failure, anomaly in time 
+            return False
+        else:
+            #common event, spatial anomaly
+            return True
+            
             
             
             
