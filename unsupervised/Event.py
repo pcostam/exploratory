@@ -18,7 +18,7 @@ class Event:
         
     def getId(self):
         return self.id
-    
+        
     def addEvent(self, event):
         self.append(event)
         

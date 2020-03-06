@@ -29,25 +29,21 @@ def main():
     
     
     quantiles=[0.1, 0.5, 0.9]
-    order = np.arange(6)
+    order = np.arange(len(y_test))
     plt.scatter(order, y_test)
-    """
-    print("Y_test", len(y_test))
-    
+ 
     for q in quantiles:
         model.compile(optimizer='adam', loss = lambda y_pred,y_true : q_loss(q, y_pred, y_true))
-        print("X_test", X_test.shape[0])
-        print("X_test", X_test.shape[1])
-    
-        model.fit(X_train, y_train, epochs=100, batch_size=1, verbose=2, shuffle=True)
+       
+        model.fit(X_train, y_train, epochs=10, batch_size=1, verbose=2, shuffle=True)
        
         y_pred = model.predict(X_test)
-        print("test")
-        
-        print("Y-pred", y_pred)
+       
         plt.plot(order, y_pred, label=q)
     plt.figure()
     plt.show()
+    
+    
     """
     print("method 2>>>>>")
     #METHOD 2
@@ -61,6 +57,7 @@ def main():
     
     for i, prediction in enumerate(predictions):
         plt.plot(order, prediction, label='{}th Quantile'.format(int(quantiles[i]*100)))
+    """
     
   
  

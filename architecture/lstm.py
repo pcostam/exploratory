@@ -7,6 +7,8 @@ Created on Fri Oct  4 21:16:37 2019
 from keras.layers import Input, Dense , Bidirectional, LSTM
 from keras.models import Model
 import keras.backend as K
+#see https://towardsdatascience.com/deep-quantile-regression-c85481548b5a
+#https://github.com/sachinruk/KerasQuantileModel/blob/master/Keras%20Quantile%20Model.ipynb
 
 def q_loss(q,y_pred,y_true):
     e = (y_pred-y_true)
@@ -18,12 +20,10 @@ def model_with_quantiles(timesteps, units):
     lstm = Bidirectional(LSTM(16, return_sequences=False, dropout=0.3))(lstm, training = True)
     dense = Dense(50)(lstm)
     out10 = Dense(1)(dense)
-    #out50 = Dense(1)(dense)
-    #out90 = Dense(1)(dense)
     model = Model(inputs=inputs, outputs=out10)
     return model
 
-
+#see https://towardsdatascience.com/anomaly-detection-with-lstm-in-keras-8d8d7e50ab1b
 def model_method(timesteps, units):
     inputs = Input(shape=(timesteps, units))  
     lstm = Bidirectional(LSTM(64, return_sequences=True, dropout=0.3))(inputs, training = True)

@@ -46,21 +46,18 @@ class Pvalue:
     
     #see https://machinelearningmastery.com/critical-values-for-statistical-hypothesis-testing/
     # tails of distribution https://docs.scipy.org/doc/scipy/reference/tutorial/stats.html
-    def pvalue_norm(mu, std):
+    def pvalue_norm(mu, std, percentage=0.05):
         #critical values from ppf at 1%, 5% and 10%  
-        crits = norm.ppf([1-0.01, 1-0.05, 1-0.10], loc=mu, scale=std)
-        pvaluesList = []
-        print('critical values from ppf at 1%%, 5%% and 10%% %8.4f %8.4f %8.4f' % (crits[0], crits[1], crits[2]))
+        crit = norm.ppf(1-percentage, loc=mu, scale=std)
+       
+        #right-tailed test
+        #pvalue = 1 - norm.cdf(c, loc=mu, scale=std)
+        #two-tailed test
+        pvalue = 2*(1 - norm.cdf(crit, loc=mu, scale=std))
+           
+        print("p_value is ", pvalue)
         
-        for c in crits:
-            #right-tailed test
-            #pvalue = 1 - norm.cdf(c, loc=mu, scale=std)
-            #two-tailed test
-            pvalue = 2*(1 - norm.cdf(c, loc=mu, scale=std))
-            pvaluesList.append(pvalue)
-            print("p_value is ", pvalue)
-        
-        return crits, pvaluesList
+        return crit, pvalue
             
     def consensus(pvalues, crits, alfa=0.05, transform ="None"):
         #need to be pi/2 on stouffers methods

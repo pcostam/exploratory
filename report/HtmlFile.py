@@ -23,7 +23,7 @@ class HtmlFile:
            
             return string_html
         except AttributeError:
-            print('The operation cant be done')
+            print('The operation cant be done', element)
     
     def writeFile(self, string_html, name):
          print("WRITE FILE")

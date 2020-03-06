@@ -57,25 +57,45 @@ def plot(y):
 def resampler():
     return True
 
-
-def create_dataset_as_supervised(table, sensorId):
-    df = create_dataset(table, sensorId)
-    y = df['value'][:14]
+def create_data(table, sensorId, n_input, limit=False):
+    df_all = create_dataset(table, sensorId, limit=limit)
+    y = df_all['value'][:14]
     #plot(y)
     print(y)
     #plot(df['value'][:14])
     #date = df['date'].tolist()
-    print("DF>>>>>>>>>>", df.columns.values)
-    df = df.drop(['date','sensortmId', 'id'], axis = 1)
+    print("DF>>>>>>>>>>", df_all.columns.values)
+    df = df_all.drop(['date','sensortgId', 'id'], axis = 1)
     yt = df['value'].tolist()
     decide_input(yt,16,1)
-    data = series_to_supervised(df, 3)
+    
+    data = series_to_supervised(df, n_in=n_input)
+    return data
+
+
+def create_dataset_as_supervised(table, sensorId, timesteps=3, limit=True):
+    df_all = create_dataset(table, sensorId, limit=limit)
+    y = df_all['value'][:14]
+    #plot(y)
+    print(y)
+    #plot(df['value'][:14])
+    #date = df['date'].tolist()
+    print("DF>>>>>>>>>>", df_all.columns.values)
+    df = df_all.drop(['date','sensortgId', 'id'], axis = 1)
+    yt = df['value'].tolist()
+    decide_input(yt,16,1)
+    data = series_to_supervised(df, timesteps)
+    data["date"] = df_all["date"]
     print("data", data)
     print("DATA>>>>>>>", data.shape[1])
-    X = np.array(data.iloc[:,:3])
+    X = np.array(data.iloc[:,:timesteps])
     print("X>>>>>>", X)
-    y = np.array(data.iloc[:,3])
+    y = np.array(data.iloc[:,timesteps])
     print("y>>>>", y)
+    X = pd.DataFrame(X, columns=["var(t-3)", "var(t-2)", "var(t-1)"])
+    X["date"] = np.array(data["date"])
+    y = pd.DataFrame(y, columns=["value"])
+    y["date"] = np.array(data["date"])
     X_train, X_test, y_train, y_test = train_test_split(X, y, test_size = 0.33)
     return X_train, X_test, y_train, y_test
     
@@ -84,36 +104,19 @@ def create_dataset(table, sensorId, limit = True):
     conn = create_engine(db_connection)
     if "sensortmmeasure" in table:
         if limit:
-            query = "SELECT * FROM " + table + " where sensortmId="+ sensorId + " limit 10000"
+            query = "SELECT date, value FROM " + table + " where sensortmId="+ sensorId + " limit 1000"
         else:
-            query = "SELECT * FROM " + table + " where sensortmId="+ sensorId 
+            query = "SELECT date, value FROM " + table + " where sensortmId="+ sensorId 
     
-    if "sensortgmeasure" in table:
+    if "sensortgmeasure" or "sensortgmeasurepp" in table:
           if limit:
-            query = "SELECT * FROM " + table + " where sensortgId="+ sensorId + " limit 10000"
+            query = "SELECT date, value FROM " + table + " where sensortgId="+ sensorId + " limit 1000"
           else:
-            query = "SELECT * FROM " + table + " where sensortgId="+ sensorId 
+            query = "SELECT date, value FROM " + table + " where sensortgId="+ sensorId 
     
     df = pd.read_sql(query , conn)
     
-    """
-    #create mask for operation events, stating possible anomalies
-    df['anomaly'] = 0 
-    query = "SELECT * FROM ordemdata"
-    df_ordem = pd.read_sql(query, conn)
-    
-    for index, row in df_ordem.iterrows():
-        if row['descricao']=='Percepcao':
-            date_event = row['date']
-            #find dates 2 days before and consider it as anomaly
-            date_N = date_N_days_ago(date_event, 2)
-            for index_df, row_df in df.iterrows():
-                if row_df['date'] >= date_N and row_df['date'] <= date_event:
-                    df['anomaly'] = 1
-               
-    print(df)
-    """
-    
+   
     return df
 
 def date_N_days_ago(date, days):
@@ -161,3 +164,45 @@ def decide_input(yt, max_lag_period, forecast_period):
     
     print("lag_periods", lag_periods)
     return lag_periods
+
+def generate_anomalous(idSensor, limit=True):
+    db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
+    conn = create_engine(db_connection)
+    if limit == False:
+        query = """
+        SELECT ATG.date, STM.value
+        FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+        WHERE idmeasurestg=STM.id and anomaly=1
+        """ 
+    else:
+        query = """
+        SELECT ATG.date, STM.value
+        FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+        WHERE idmeasurestg=STM.id and anomaly=1 limit 1000
+        """ 
+        
+    df = pd.read_sql(query, conn)
+    return df
+def generate_normal(idSensor, limit=True):
+    db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
+    conn = create_engine(db_connection)
+    query = ""
+    if limit == False:
+        query = """
+         SELECT ATG.date, STM.value
+        FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+        WHERE idmeasurestg=STM.id and anomaly=0
+        """ 
+    else:
+        query = """
+         SELECT ATG.date, STM.value
+        FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+        WHERE idmeasurestg=STM.id and anomaly=0 limit 1000
+        """ 
+        
+    df = pd.read_sql(query, conn)
+    return df
+
+def generate_sequences(sensorId, table, limit = True):
+    all_sequence = create_dataset(table, sensorId, limit = limit)
+    return all_sequence, generate_normal(sensorId, limit = limit), generate_anomalous(sensorId, limit=limit)
