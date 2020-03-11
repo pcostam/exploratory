@@ -65,7 +65,7 @@ def create_data(table, sensorId, n_input, limit=False):
     #plot(df['value'][:14])
     #date = df['date'].tolist()
     print("DF>>>>>>>>>>", df_all.columns.values)
-    df = df_all.drop(['date','sensortgId', 'id'], axis = 1)
+    df = df_all.drop(['date'], axis = 1)
     yt = df['value'].tolist()
     decide_input(yt,16,1)
     

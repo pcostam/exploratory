@@ -6,8 +6,12 @@
 '''
 
 import pandas as pd, dash
-from gui.app import app
-from gui import gui_utils as gui, plot_utils
+from app import app
+#from gui.app import app
+#from gui import gui_utils as gui, plot_utils
+import gui_utils as gui, plot_utils
+#from gui_utils import * 
+#from plot_utils import *
 from dash.dependencies import Input, Output
 
 ''' ================================ '''

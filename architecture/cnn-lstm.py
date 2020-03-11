@@ -4,7 +4,7 @@ Created on Tue Mar  3 12:42:20 2020
 
 @author: anama
 """
-from preprocessing.series import create_data
+from preprocessing.series import create_data, series_to_supervised, generate_sequences
 from keras.models import Sequential
 from keras.layers import Dense
 from keras.layers import LSTM
@@ -22,30 +22,37 @@ def cnn_lstm(X_train, y_train, n_epochs, n_batch, n_kernel, n_filters, n_nodes, 
     model.add(TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu')))
     model.add(TimeDistributed(MaxPooling1D(pool_size=2)))
     model.add(TimeDistributed(Flatten()))
-    
+
     
     model.add(LSTM(n_nodes, activation='relu'))
     model.add(Dense(n_nodes, activation='relu'))
     model.add(Dense(1))
     
     model.compile(loss='mse', optimizer='adam')
+ 
 	# fit
-    model.fit(X_train, X_train, epochs=n_epochs, verbose=0)
+    model.fit(X_train, y_train, batch_size=n_batch, epochs=n_epochs, verbose=0)
     
     return model
 def test():
   
-    n_seq = 100 #3 months (meaning 4 sequences)
-    n_steps = 3  #weeks? days? minutes? weeks.
-    n_filters = 32
-    n_kernel = 3
+    n_seq = 300 #3 months (meaning 4 sequences)
+    n_steps = 3 #weeks? days? minutes? weeks.
+    n_filters = 2
+    n_kernel = 1
     n_nodes = 100
     n_epochs = 200
-    n_batch = 20
+    n_batch = 1
     
     n_input = n_seq * n_steps
+    #n_input = 100
     print("n_input", n_input)
-    data = create_data("sensortgmeasurepp", "12", n_input, limit=True)
+    
+    sequence, normal_sequence, anomalous_sequence = generate_sequences("12", "sensortgmeasurepp", limit=True)
+    normal_sequence = normal_sequence.drop(['date'], axis=1)
+    data = series_to_supervised(normal_sequence, n_in=n_input)
+    
+    print(data)
     data = data.values
     print("data", type(data))
     print("data", data)
@@ -53,10 +60,11 @@ def test():
     X_train  = data[:, :-1]
     y_train = data[:, -1]
     print(X_train.shape)
- 
     
+    #[batch_size, height, width, depth]
     #[samples, subsequences, timesteps, features]
     X_train = np.reshape(X_train, (X_train.shape[0], n_seq, n_steps, 1))
+    
     
     cnn_lstm(X_train, y_train, n_epochs, n_batch, n_kernel, n_filters, n_nodes, n_steps)
 

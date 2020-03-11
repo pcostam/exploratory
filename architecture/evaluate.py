@@ -121,4 +121,10 @@ def get_pressure_drop_stats(pressures):
     print("max pressure drop", np.max(all_drops))
     
     
+def f_beta_score(TP, FP, FN, beta=0.5):
+    precision = TP/(TP + FP)
+    recall = TP/(TP + FN)
+    
+    return (1+beta**2)*((precision*recall)/((beta**2)*precision)+recall)
+
     

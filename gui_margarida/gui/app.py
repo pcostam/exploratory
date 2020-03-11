@@ -6,6 +6,7 @@
 
 import dash
 
-app = dash.Dash(__name__, assets_folder = 'assets', include_assets_files = True) 
+#app = dash.Dash(__name__, assets_folder = 'assets', include_assets_files = True) 
+app = dash.Dash(__name__) 
 server = app.server
 app.config.suppress_callback_exceptions = True

@@ -18,7 +18,7 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import load_model
-
+import evaluate
 #see https://medium.com/@shivajbd/understanding-input-and-output-shape-in-lstm-keras-c501ee95c65e
 def autoencoder_model(X):
     timesteps = X.shape[1]
@@ -70,7 +70,8 @@ def plot_training_losses(history):
     ax.set_xlabel('Epoch')
     ax.legend(loc='upper right')
     plt.show()
-    
+  
+
 #see https://towardsdatascience.com/lstm-autoencoder-for-anomaly-detection-e1f4f2ee7ccf
 #https://towardsdatascience.com/lstm-autoencoder-for-extreme-rare-event-classification-in-keras-ce209a224cfb
 def test_autoencoder():
@@ -219,8 +220,8 @@ def test_autoencoder():
     vector = np.squeeze(vector)
     
     score = anomaly_score(mu, sigma, vector)
-    thresholds = [0.05, 0.5, 1,2]
-    
+    thresholds = [0.05, 0.5, 1, 2, 3]
+    all_anormals = list()
     for th in thresholds:
         no_anomalous = 0
         i = 0
@@ -228,9 +229,31 @@ def test_autoencoder():
             if sc > th:
                 no_anomalous += 1
                 date = X_val_2_D['date'].iloc[i]
-                print("date", date)
+                print("date", date) 
             i += 1
         print("no_anomalous", no_anomalous)
+        all_anormals.append(no_anomalous)
+    all_anormals = np.array(all_anormals)
+    index_min = np.argmin(all_anormals)
+    min_th = thresholds[index_min]
+    
+    dates_list = list()
+    #positive class is anomaly
+    FP = 0
+    TP = 0
+    FN = 0
+    for sc in score:
+        if sc > min_th:
+             FP += 1
+             date = X_val_2_D['date'].iloc[i]
+             dates_list.append(date)
+             print("date", date) 
+    #question? division by zero
+    #fbs = evaluate.f_beta_score(TP, FP, FN, beta=0.1)
+    # print("f_beta_score", fbs)
+    
+    
+            
     
     
     
