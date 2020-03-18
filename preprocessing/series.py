@@ -12,6 +12,7 @@ from scipy.ndimage.interpolation import shift
 from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import datetime
+import os
 def series_to_supervised(df, n_in=1, n_out=1, dropnan=True):
    """
    Frame a time series as a supervised learning dataset.
@@ -73,8 +74,12 @@ def create_data(table, sensorId, n_input, limit=False):
     return data
 
 
-def create_dataset_as_supervised(table, sensorId, timesteps=3, limit=True):
-    df_all = create_dataset(table, sensorId, limit=limit)
+def create_dataset_as_supervised(table, sensorId, timesteps=3, limit=True, df_to_csv = False):
+    df_all = pd.Dataframe()
+    if df_to_csv == False:
+        df_all = create_dataset(table, sensorId, limit=limit)
+    if df_to_csv == True:
+        df_all = csv_to_df(sensorId, limit = limit)
     y = df_all['value'][:14]
     #plot(y)
     print(y)
@@ -119,6 +124,80 @@ def create_dataset(table, sensorId, limit = True):
    
     return df
 
+def select_data(df, min_date, max_date):    
+    if ((min_date == 1) or (max_date == 1)):
+        df.reset_index(level=0, inplace=True)
+        return df
+    else:
+        df = df[(df['date'] >= min_date) & (df['date'] <= max_date)]
+        df.reset_index(level=0, inplace=True)
+        return df
+    
+def csv_to_df(sensorId, path, limit = True, n_limit=1000):
+    
+    if limit == True:
+        df = pd.read_csv(path, nrows = n_limit)
+    else:
+        df = pd.read_csv(path)
+        
+    df[['value']] = df[['value']].astype('float32')
+    return df
+
+def find_gap(df, frequency):
+     dates = df['date']
+     res = []
+     for index, tstamp in dates.items(): 
+         try:        	
+             tstamp1 = dates.loc[index]
+             tstamp2 = dates.loc[index + 1]
+             diff = tstamp1 - tstamp2
+             diff_min = int(round(diff.total_seconds() / 60))
+             if diff_min > 15:
+                 #there is gap
+                 print("gap", index)
+                 res.append(index)
+         except KeyError as e:
+             pass
+     return res
+    
+def csv_to_chunks(sensorId, path, limit=True, n_limit=1000):
+    list_df = list()
+    if limit == True:
+        df = pd.read_csv(path, nrows = n_limit)
+        df = downsample(df, '15min')
+        print("after downsample", df)
+        indexes = find_gap(df, 15)
+        list_df = np.split(df, indexes)
+        print("list df", list_df)
+        #DO THIS IN INDEXES, IT'S MORE EASY!
+        #TODO
+        for i in range(0, len(list_df)):
+            if list_df[i].shape[0] > 2000:
+                size = list_df[i].shape[0]
+                df_1 = list_df[i].iloc[:size,:]
+                df_2 = list_df[i].iloc[size:,:]
+                
+                
+      
+     
+    else:
+        df = pd.read_csv(path)
+        df = downsample(df, '15min')
+        #list_df = np.array_split(df, 5)
+        indexes = find_gap(df, 15)
+        list_df = np.split(df, indexes)
+        
+        
+    return list_df
+
+def csv_to_TextFileReader(sensorId, path, limit=True, n_limit=1000):
+    if limit == True:
+        df_chunk = pd.read_csv(path, nrows = n_limit, chunksize=10000)
+    else:
+        df_chunk = pd.read_csv(path, chunksize=10000)
+        
+    return df_chunk
+    
 def date_N_days_ago(date, days):
     return date - datetime.timedelta(days=days)
     
@@ -165,44 +244,146 @@ def decide_input(yt, max_lag_period, forecast_period):
     print("lag_periods", lag_periods)
     return lag_periods
 
-def generate_anomalous(idSensor, limit=True):
-    db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
-    conn = create_engine(db_connection)
-    if limit == False:
+
+
+def script_to_csv():
+    for sensorId in range(1,16):
         query = """
-        SELECT ATG.date, STM.value
-        FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
-        WHERE idmeasurestg=STM.id and anomaly=1
-        """ 
-    else:
-        query = """
-        SELECT ATG.date, STM.value
-        FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
-        WHERE idmeasurestg=STM.id and anomaly=1 limit 1000
-        """ 
+            SELECT ATG.date, STM.value
+            FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+            WHERE idmeasurestg=STM.id AND ATG.idSensor=%s AND anomaly=0
+            """ % (sensorId)
+        path = "F:\\manual\\Tese\\exploratory\\wisdom\\dataset\\infraquinta\\real\\normal\\sensor_"+ str(sensorId) + ".csv"
         
-    df = pd.read_sql(query, conn)
+        generate_csv(query, sensorId, path)
+        query = """
+            SELECT ATG.date, STM.value
+            FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+            WHERE idmeasurestg=STM.id AND ATG.idSensor=%s AND anomaly=1 
+            """ % (sensorId)
+        path = "F:\\manual\\Tese\\exploratory\\wisdom\\dataset\\infraquinta\\real\\anomalies\\sensor_"+ str(sensorId) + ".csv"
+        generate_csv(query, sensorId, path)
+        
+def generate_csv(query, sensorId, path):
+     #import configuration 
+
+     #root = configuration.read_config() 
+     #db_config = configuration.get_db(root)
+   
+     sensor_id = 0
+     
+     mydb = mysql.connector.connect(host='localhost',user='root',password='banana')    
+     
+     df = pd.read_sql(query, con=mydb)
+     df.to_csv(index=False, path_or_buf=path)
+     
+     print("  sensor " + str(sensorId) + ": " + str(df.shape[0]) + " rows")
+        
+     sensor_id += 1
+      
+     mydb.close()
+
+
+def generate_anomalous(idSensor, limit=True, df_to_csv = False):
+    df = pd.DataFrame()
+    if df_to_csv: 
+        init_path = os.path.dirname(os.getcwd())
+        path = ""
+        if init_path == "/content/drive/My Drive/Tese/exploratory":
+              path =  init_path + "/wisdom/dataset/infraquinta/real/anomalies/sensor_"+ str(idSensor) + ".csv"
+        else:
+              path = init_path + "\\dataset\\infraquinta\\real\\anomalies\\sensor_" + str(idSensor) + ".csv"
+    
+        df = csv_to_df(idSensor, path, limit=limit)
+    else:
+        db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
+        conn = create_engine(db_connection)
+        query = ""
+    
+        if limit == False:
+            query = """
+             SELECT ATG.date, STM.value
+            FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+            WHERE idmeasurestg=STM.id AND ATG.idSensor=%s AND anomaly=1
+            """ % (idSensor)
+        else:
+            query = """
+             SELECT ATG.date, STM.value
+            FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+            WHERE idmeasurestg=STM.id AND ATG.idSensor=%s AND anomaly=1 limit 1000
+            """ % (idSensor)
+        
+        df = pd.read_sql(query, conn)
     return df
-def generate_normal(idSensor, limit=True):
-    db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
-    conn = create_engine(db_connection)
-    query = ""
-    if limit == False:
-        query = """
-         SELECT ATG.date, STM.value
-        FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
-        WHERE idmeasurestg=STM.id and anomaly=0
-        """ 
-    else:
-        query = """
-         SELECT ATG.date, STM.value
-        FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
-        WHERE idmeasurestg=STM.id and anomaly=0 limit 1000
-        """ 
+ 
+
+    
+def generate_normal(idSensor, limit=True, n_limit=1000, df_to_csv = False, to_chunks=True):
+    df = pd.DataFrame()
+    if df_to_csv: 
+        init_path = os.path.dirname(os.getcwd())
+        path = ""
+        if init_path == "/content/drive/My Drive/Tese/exploratory":
+            path =  init_path + "/wisdom/dataset/infraquinta/real/normal/sensor_"+ str(idSensor) + ".csv"
+        else:
+            path = init_path + "\\dataset\\infraquinta\\real\\normal\\sensor_" + str(idSensor) + ".csv"
+     
+        #df = csv_to_df(idSensor, path, limit=limit)
+        if to_chunks == True:
+            df = csv_to_chunks(idSensor, path, limit=limit, n_limit=n_limit)
+        else:
+            df = csv_to_df(idSensor, path, limit=limit, n_limit=n_limit)
         
-    df = pd.read_sql(query, conn)
+    else:
+        db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
+        conn = create_engine(db_connection)
+        query = ""
+    
+        if limit == False:
+            query = """
+             SELECT ATG.date, STM.value
+            FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+            WHERE idmeasurestg=STM.id AND ATG.idSensor=%s AND anomaly=0
+            """ % (idSensor)
+        else:
+            query = """
+             SELECT ATG.date, STM.value
+            FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
+            WHERE idmeasurestg=STM.id AND ATG.idSensor=%s AND anomaly=0 limit 1000
+            """ % (idSensor)
+        
+        df = pd.read_sql(query, conn)
+        
     return df
 
-def generate_sequences(sensorId, table, limit = True):
-    all_sequence = create_dataset(table, sensorId, limit = limit)
-    return all_sequence, generate_normal(sensorId, limit = limit), generate_anomalous(sensorId, limit=limit)
+def downsample(df, minutes):
+     df['date'] = pd.to_datetime(df['date'])
+     df.index = df['date']
+     df.index = pd.to_datetime(df.index)
+     df = df.resample(minutes).mean()
+     df.reset_index(level=0, inplace=True)
+     print("df", df)
+     return df
+ 
+def generate_sequences(sensorId, table, limit = True, df_to_csv = False):
+    all_sequence = pd.DataFrame()
+    normal_sequence = pd.DataFrame()
+    anormal_sequence = pd.DataFrame()
+    
+    if df_to_csv == True:
+        init_path = os.path.dirname(os.getcwd())
+        path = ""
+        if init_path == "/content/drive/My Drive/Tese/exploratory":
+            path =  init_path + "/wisdom/dataset/infraquinta/real/sensor_"+ str(sensorId) + ".csv"
+        else:
+            path = init_path + "\\dataset\\infraquinta\\real\\sensor_" + str(sensorId) + ".csv"
+        all_sequence = csv_to_df(sensorId, path, limit=limit)
+        normal_sequence = generate_normal(sensorId, limit = limit, n_limit=129600, df_to_csv = df_to_csv)
+        anormal_sequence = generate_anomalous(sensorId, limit=limit, df_to_csv = df_to_csv)
+    
+    else:
+        all_sequence = create_dataset(table, sensorId, limit = limit)
+        normal_sequence = generate_normal(sensorId, limit = limit, n_limit=129600, df_to_csv = df_to_csv)
+        anormal_sequence = generate_anomalous(sensorId, limit=limit,df_to_csv = df_to_csv)
+    
+    return all_sequence, normal_sequence, anormal_sequence

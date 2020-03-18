@@ -23,7 +23,7 @@ def get_db(root):
 
 def get_path(root):
     path = root.find('path').text 
-    return path.replace("\\", "\\\\")
+    return path
 
 def get_wmes(root):   
     wmes = []

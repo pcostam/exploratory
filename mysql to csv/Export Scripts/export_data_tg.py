@@ -12,12 +12,12 @@ import mysql.connector
 import pandas as pd
 import sys
 sys.path.append('../Functions')
-from configuration import *
+import configuration 
 
-root = read_config()
-path_init = get_path(root)
-db_config = get_db(root)
-wmes = get_wmes(root)
+root = configuration.read_config()
+path_init = configuration.get_path(root)
+db_config = configuration.get_db(root)
+wmes = configuration.get_wmes(root)
 
 mydb = mysql.connector.connect(
   host=db_config['host'],
@@ -31,7 +31,7 @@ print("\nExport initiated")
 cursor = mydb.cursor(buffered=True)
 
 for wme in wmes:
-    path = path_init + "\\Data\\" + wme + "\\real\\sensor_"
+    path = path_init + wme + "\\real\\sensor_"
     query = "SELECT count(*) FROM " + wme + ".sensortg"
       
     cursor.execute(query)
@@ -43,7 +43,7 @@ for wme in wmes:
     
     for i in range(1,sensor_count+1):
             
-        query = "SELECT date, value FROM " + wme + ".sensortgmeasure where sensortgId = " + str(sensor_id)
+        query = "SELECT date, value FROM " + wme + ".sensortgmeasurepp where sensortgId = " + str(sensor_id)
         path_tmp = path + str(sensor_id) + ".csv"
         
         df = pd.read_sql(query, con=mydb)

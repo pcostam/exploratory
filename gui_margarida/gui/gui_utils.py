@@ -52,7 +52,7 @@ def button(button_id, title, values, radio, sel_options=None):
         button = html.Div(style={'overflow':'auto','display':'flex','flex-direction':'column-reverse'},
                           children=[dcc.Textarea(id=button_id,value=values,placeholder=values, style=textStyle)])
     elif radio is Button.graph or radio is Button.figure: 
-        from gui import plot_utils
+        import plot_utils
         button = dcc.Graph(id=button_id, figure=plot_utils.get_null_plot())
 
     ### C: Radio, CheckBox, Drop buttons ###

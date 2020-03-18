@@ -5,8 +5,11 @@
 '''
 
 import dash
+import os
+assets_path = os.getcwd() +'//assets'
 
-#app = dash.Dash(__name__, assets_folder = 'assets', include_assets_files = True) 
-app = dash.Dash(__name__) 
+external_stylesheets = [assets_path]
+app = dash.Dash(__name__, assets_folder = assets_path, include_assets_files = True)  
+#app = dash.Dash(__name__, external_stylesheets=external_stylesheets)
 server = app.server
 app.config.suppress_callback_exceptions = True
