@@ -162,11 +162,30 @@ class Stats(object):
                     
         cursor.execute(query)
       
-        dates = list(date[0] for date in cursor)
+        dates_start = list(date[0] for date in cursor)
         ids = list()
-        print("size", len(dates))
-        for date_event in dates:
-            date_N = Stats.date_N_days_ago(date_event, 2)
+        print("size", len(dates_start))
+        
+        query = "SELECT date FROM ordemdata WHERE descricao='Abertura'"
+        cursor.execute(query)
+        dates_abertura = list(date[0] for date in cursor)
+        dates_end_event = list()
+        
+        for abertura in dates_abertura:
+            for fecho in dates_start:
+                 diff = abertura - fecho
+                 print("diff", diff)
+                 diff_hours = diff.total_seconds() /3600
+                 print("diff hours", diff_hours)
+                 if diff_hours < 16 and diff_hours > 0:
+                     dates_end_event.append(abertura)
+                 
+        print("len abertura", len(dates_end_event))
+                 
+            
+        #select opening that are after a percepcao
+        for date_event, date_perception in zip(dates_end_event, dates_start):
+            date_N = Stats.date_N_days_ago(date_perception, 2)
             print("date_N", date_N)
             print("date_event", date_event)
             query="""

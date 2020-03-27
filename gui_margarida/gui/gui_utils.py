@@ -26,12 +26,15 @@ calendar = {'all':range(1,8),'weekday':range(1,6),'weekend':range(6,8)}
 def button(button_id, title, values, radio, sel_options=None):
     button = None
     style = {'display':'inline-block'}
-    
+  
     ### A: Input, DateRange buttons ###
     if radio is Button.input: 
         button = dcc.Input(id=button_id,value='0' if values is None else values,style={'width':'100%'})
     elif radio is Button.daterange: 
+        print("daterange")
+        print("button_id", button_id)
         button = dcc.DatePickerRange(id=button_id,start_date=pd.to_datetime(values[0]),end_date=pd.to_datetime(values[1]))
+        print("button start", button.start_date)
     elif radio is Button.date: 
         button = dcc.DatePickerSingle(id=button_id,date=pd.to_datetime(values))
     elif radio is Button.time: 
@@ -110,6 +113,7 @@ def get_layout(pagetitle, parameters, visuals, hidden_components=[], prefix=""):
         
     '''B: finish layout'''    
     submitstyle = {'background-color':'#6ABB97','border':'none','font-size':'14px','width':'58%','margin':5,'margin-top':20,'margin-bottom':25}
+    
     layout.append(html.Button('Run query', id='button',style=submitstyle))
     for param in visuals: 
         layout.append(button(prefix+param[0],param[0],param[1],param[2],None if len(param)<=3 else param[3]))
@@ -120,12 +124,22 @@ def get_layout(pagetitle, parameters, visuals, hidden_components=[], prefix=""):
 ''' ====== B: OTHER APP UTILS ====== '''
 ''' ================================ '''
 
-def get_states(parameters, skipdates=False, prefix=""):
+def get_states(parameters, prefix=""):
     result = []
-    if not skipdates: result = [State(prefix+parameters[0][0],'start_date'),State(prefix+parameters[0][0],'end_date')]
-    start = 0 if skipdates else 1
-    for i in range(start,len(parameters)): 
+    start = 0 
+    for i in range(start,len(parameters)):
+        print("size", len(parameters[i]))
+        print("test", parameters[i][0])
+        if parameters[i][0] == "period":
+            result.append(State(prefix+parameters[i][0],'start_date'))
+            result.append(State(prefix+parameters[i][0],'end_date'))
+        """
+        for j in range(0, len(parameters[i])):
+            print("element", parameters[i][j])
+        """
+        
         result.append(State(prefix+parameters[i][0],'value'))
+        
     return result
 
 def get_null_label():

@@ -6,13 +6,19 @@
 '''
 
 import pandas as pd, dash
+import gui_utils as gui, plot_utils
 from app import app
 #from gui.app import app
 #from gui import gui_utils as gui, plot_utils
-import gui_utils as gui, plot_utils
+
 #from gui_utils import * 
 #from plot_utils import *
-from dash.dependencies import Input, Output
+from dash.dependencies import Input, Output, State
+#import dash_html_components as html
+#import dash_core_components
+import io
+import base64
+import Learner.interface as Learner
 
 ''' ================================ '''
 ''' ====== A: WEB PAGE PARAMS ====== '''
@@ -30,7 +36,7 @@ target_options = [
 processing_parameters = [
         ('mode',['default','parametric'],gui.Button.radio,'default'),
         ('approach',["supervised_point_score", "time_to_outlier", "unsupervised_point_score"],gui.Button.unidrop), 
-        ('method',["LSTM autoenconders", "CNN-LSTM", "CNN-Bi-LSTM", "stacked Bi-LSTM", "SCB-LSTM"],gui.Button.unidrop), 
+        ('method',["LSTM autoencoders", "CNN-LSTM", "CNN-Bi-LSTM", "stacked Bi-LSTM", "SCB-LSTM"],gui.Button.unidrop), 
         ('enhacement',['calendric-based_correction','weather-based_correction'],gui.Button.checkbox), 
         ('outlier threshold [0-100]','50',gui.Button.input),
         ('parameterization','<parameters here>',gui.Button.input), 
@@ -43,7 +49,14 @@ charts = [('visualizacao',None,gui.Button.figure),('results','Statistics on resu
 layout = gui.get_layout(pagetitle,parameters,charts)
 
 def get_states():
-    return gui.get_states(target_options+processing_parameters)
+    states = gui.get_states(target_options+processing_parameters)
+    states.append(State('upload', 'contents'))
+    states.append(State('upload', 'filename'))
+    return states
+
+
+states = get_states()
+print("states", states)
 
 def agregar(mlist):
     agregado = set()
@@ -56,26 +69,103 @@ def agregar(mlist):
 ''' ====== B: CORE BEHAVIOR ====== '''
 ''' ============================== '''
 
-def get_data(states, series=False):
-    
+def get_data(df, states, series=False):
     '''A: process parameters'''
-    idate, fdate = pd.to_datetime(states['period.start_date']), pd.to_datetime(states['period.end_date'])    
-    minutes = int(states['time_sampling_(seconds).value'])
-    dias = [gui.get_calendar_days(states['calendar.value'])]
+    start = pd.to_datetime(states['period.start_date'])
+    end = pd.to_datetime(states['period.end_date'])
+    granularity = int(states['time_sampling_(seconds).value'])
+    anomaly_threshold = float(states['outlier threshold [0-100].value'])
+    method = str(states['method.value'][0])
+    #dias = [gui.get_calendar_days(states['calendar.value'])]
+    
+    print("granularity", granularity)
+    print("start", start)
+    print("method", method)
+    print("thresh", anomaly_threshold)
+  
+    #print("dias", dias)
+    Learner.operation(df, method, start, end, granularity, anomaly_threshold)
     
     '''B: retrieve data'''
     #data, name, = retrieve_data(idate,fdate,contagem,dias,estacoes_entrada,estacoes_saida,minutes,["record_count"])'''
     return None #series_utils.fill_time_series(data,name,idate,fdate,minutes)
 
+def retrieve_data(idate, fdate, contagem, dias, estacoes_entrada, estacoes_saida, minutes, record):
+    
+    #parse_contents()
+    return True
 
+
+#returns dataframe
+def parse_data(contents, filename):
+    content_type, content_string = contents.split(',')
+
+    decoded = base64.b64decode(content_string)
+    
+    try:
+        if 'csv' in filename:
+            # Assume that the user uploaded a CSV or TXT file
+            df = pd.read_csv(
+                io.StringIO(decoded.decode('utf-8')), index_col=False)
+        elif 'xls' in filename:
+            # Assume that the user uploaded an excel file
+            df = pd.read_excel(io.BytesIO(decoded))
+        elif 'txt' or 'tsv' in filename:
+            # Assume that the user upl, delimiter = r'\s+'oaded an excel file
+            df = pd.read_csv(
+                io.StringIO(decoded.decode('utf-8')), delimiter = r'\s+')
+    except Exception as e:
+        print(e)
+        return ['There was an error processing this file.']
+    
+    
+    print("df columns", df.columns)
+    print("df index", df.index)
+    return df
+
+print("states", states)
+
+@app.callback(Output('visualizacao', 'figure'), 
+              [Input('button', 'n_clicks')],
+              states)   
+def update_graph(n_clicks, *args):
+    print("update graph")
+    
+    states = dash.callback_context.states
+   
+    fig = list()
+    data = list()
+    contents = states['upload.contents'][0]
+    if contents is not None:
+        filename = states['upload.filename'][0]
+        print("filename:", filename)
+        df = parse_data(contents, filename)
+        print(df.head())
+        df['date'] = pd.to_datetime(df['date'])
+        print("type", type(df))
+        print("init df.columns", df.columns)
+        print("init df.index", df.index)
+        data = get_data(df, states, series=False)
+        df.index = df['date']
+        df = df.drop(['date'], axis = 1)
+        series = df
+        fig = plot_utils.get_series_plot(series,'titulo aqui')
+    return fig
+
+
+"""
 @app.callback([Output('visualizacao','figure'),Output('correlograma', 'figure')],
               [Input('button','n_clicks')])
 def update_charts(inp,*args):
+    print(">>>>update")
+    for title in args:
+        print('element: ', title)
+        
     if inp is None: 
         nullplot = plot_utils.get_null_plot()
         return nullplot, nullplot
     states = dash.callback_context.states
-    #print(states)
+    print(states)
     series = get_data(states,series=True)
 
     '''A: Run preprocessing here'''
@@ -87,6 +177,7 @@ def update_charts(inp,*args):
 
     return fig, corr
 
+"""
 
 ''' ===================== '''
 ''' ====== C: MAIN ====== '''

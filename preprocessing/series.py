@@ -13,7 +13,7 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import datetime
 import os
-def series_to_supervised(df, n_in=1, n_out=1, dropnan=True):
+def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
    """
    Frame a time series as a supervised learning dataset.
    Arguments:
@@ -24,9 +24,10 @@ def series_to_supervised(df, n_in=1, n_out=1, dropnan=True):
 	Returns:
 	Pandas DataFrame of series framed for supervised learning.
    """
-   #n_vars = 1 if type(data) is list else data.shape[1]
-   #df = pd.DataFrame(data)
-   n_vars = df.shape[1]
+   n_vars = 1 if type(data) is list else data.shape[1]
+   df = pd.DataFrame(data)
+   #n_vars = df.shape[1]
+   print("nvars", n_vars)
  
    cols, names = list(), list()
     
@@ -48,9 +49,20 @@ def series_to_supervised(df, n_in=1, n_out=1, dropnan=True):
 	# drop rows with NaN values
    if dropnan:
        agg.dropna(inplace=True)
+   print("agg", agg)
    return agg
 	
+  
     
+def preprocess_data(df, granularity, start_date, end_date):
+    print("preprocess start date", type(start_date))
+    minutes = str(granularity) + "min"
+    df = select_data(df, start_date, end_date)
+    print("downsample")
+    df = downsample(df, minutes)
+
+    return df 
+
 def plot(y):
     #x = np.arange(1,15)
     plt.plot(y)
@@ -124,13 +136,24 @@ def create_dataset(table, sensorId, limit = True):
    
     return df
 
-def select_data(df, min_date, max_date):    
+def select_data(df, min_date, max_date):  
+    print("SELECT DATA 2")
+    print("df.index", df.index)
+    print("df.columns", df.columns)
+    df['date'] = pd.to_datetime(df['date'])
+    min_date = pd.to_datetime(min_date)
+    max_date = pd.to_datetime(max_date)
+   
     if ((min_date == 1) or (max_date == 1)):
-        df.reset_index(level=0, inplace=True)
+        #df.reset_index(level=0, inplace=True)
         return df
     else:
         df = df[(df['date'] >= min_date) & (df['date'] <= max_date)]
-        df.reset_index(level=0, inplace=True)
+        print("df.index", df.index)
+        print("df.columns", df.columns)
+        df.index = pd.RangeIndex(start=0, stop=df.shape[0])
+        print("df.index", df.index)
+        print("df.columns", df.columns)
         return df
     
 def csv_to_df(sensorId, path, limit = True, n_limit=1000):
@@ -317,7 +340,7 @@ def generate_anomalous(idSensor, limit=True, df_to_csv = False):
     return df
  
 
-    
+   
 def generate_normal(idSensor, limit=True, n_limit=1000, df_to_csv = False, to_chunks=True):
     df = pd.DataFrame()
     if df_to_csv: 
@@ -357,12 +380,25 @@ def generate_normal(idSensor, limit=True, n_limit=1000, df_to_csv = False, to_ch
     return df
 
 def downsample(df, minutes):
+     print("test 4")
+     print("test downsample")
+     print("minutes", minutes)
+     print("df columns", df.columns)
+     print("index", df.index)
      df['date'] = pd.to_datetime(df['date'])
-     df.index = df['date']
-     df.index = pd.to_datetime(df.index)
+     aux_1 = df['date'].copy()
+     aux = df['date'].copy()
+     df.index = aux
      df = df.resample(minutes).mean()
-     df.reset_index(level=0, inplace=True)
-     print("df", df)
+     print("df.index", df.index)
+     print("df.columns", df.columns)
+     print("aux 1", aux_1)
+   
+     df.index = pd.RangeIndex(start=0, stop=df.shape[0])
+     df['date'] = aux_1
+     print("df_date", df['date'])
+     print("df index", df.index)
+     print("df columns", df.columns)
      return df
  
 def generate_sequences(sensorId, table, limit = True, df_to_csv = False):

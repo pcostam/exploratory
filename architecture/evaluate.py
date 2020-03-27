@@ -7,9 +7,7 @@ Created on Fri Oct  4 21:17:04 2019
 
 from preprocessing.series import create_dataset
 import numpy as np
-import pandas as pd
-from statsmodels.tsa.seasonal import STL
-from matplotlib import pyplot 
+import pandas as pd 
 from pandas.plotting import register_matplotlib_converters
 
 
@@ -122,9 +120,14 @@ def get_pressure_drop_stats(pressures):
     
     
 def f_beta_score(TP, FP, FN, beta=0.5):
-    precision = TP/(TP + FP)
-    recall = TP/(TP + FN)
-    
+    precision = 0
+    recall = 0
+    if TP + FP != 0: 
+        precision = TP/(TP + FP)
+    if TP + FN != 0:
+        recall = TP/(TP + FN)
+    if precision==0 and recall==0:
+        return 0
     return (1+beta**2)*((precision*recall)/((beta**2)*precision)+recall)
 
     

@@ -5,7 +5,8 @@
 '''
 
 import numpy as np
-import plotly.tools as tls, plotly.figure_factory as plt, plotly.graph_objs as go
+import plotly.figure_factory as plt, plotly.graph_objs as go
+import plotly.subplots as sls
 
 ''' ================================= '''
 ''' ====== A: LINE CHART UTILS ====== '''
@@ -14,7 +15,7 @@ import plotly.tools as tls, plotly.figure_factory as plt, plotly.graph_objs as g
 def get_series_plot(series,title):
     
     '''A: chart lines'''
-    fig = tls.make_subplots(rows=1, cols=1, shared_xaxes=True, vertical_spacing=0.00000001, horizontal_spacing=0.001)
+    fig = sls.make_subplots(rows=1, cols=1, shared_xaxes=True, vertical_spacing=0.00000001, horizontal_spacing=0.001)
     for col in series.columns:
         fig.append_trace({'x':series.index, 'y':series[col], 'type':'scatter', 'name':col}, 1, 1)
         
