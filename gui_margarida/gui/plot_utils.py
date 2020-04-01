@@ -44,6 +44,11 @@ def add_anomalies(fig, series, predictor):
         fig.append_trace({'x':series.index, 'y':anomalies, 'yaxis':'y1', 'mode':'markers', 'name':'Anomalias['+var+']'},1,1)
         fig.update_traces(marker=dict(size=12,line=dict(width=2,color='DarkSlateGrey')),selector=dict(mode='markers'))
 
+def add_anomalie_scores(fig, anomalies):
+    fig.add_trace(go.Scatter(x=anomalies['date'], y=anomalies['value'], mode='markers', name='Anomalies'))
+    
+    return True
+
 def get_null_plot(message=None):
     title='parameterize and click <b>run</b> to visualize'
     if message is not None: title=message

@@ -22,7 +22,19 @@ from keras.models import Model
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import pandas as pd
 import datetime
-
+import skopt
+from skopt import gp_minimize
+from skopt.space import Integer, Real
+from skopt.utils import use_named_args
+from skopt.callbacks import DeltaYStopper
+import tuning
+from skopt.utils import use_named_args
+from skopt.callbacks import DeltaYStopper
+import utils
+import time
+import tensorflow
+from keras.backend import clear_session
+from keras.optimizers import Adam
 
 #see https://machinelearningmastery.com/how-to-develop-deep-learning-models-for-univariate-time-series-forecasting/
 #https://towardsdatascience.com/get-started-with-using-cnn-lstm-for-forecasting-6f0f4dde5826
@@ -30,169 +42,100 @@ import datetime
 #multi-channel
 #https://machinelearningmastery.com/how-to-develop-convolutional-neural-networks-for-multi-step-time-series-forecasting/
 
+type_model = None
+type_model_func = None
+config =  [1, 1, 20, 1, 2, 128, 1e-2, 0.5, 0.5]
+n_steps = 96
+n_seq = 10
+n_input = n_seq * n_steps
+n_features = 1
+toIndex = dict()
+n_epochs = 0
+timesteps = 96
+dimensions = []
+default_parameters = []
+fitness_func = None
 
-def generate_sets(raw, n_seq, n_input, timesteps, n_features):
-    y_train = preprocess_y_train(raw, n_input, n_features)
-    print("y_train shape", y_train.shape)
-   
-    X_train = preprocess_train(raw, n_seq, n_input, timesteps, n_features)
-    
-    print("type xtrain", type(X_train))
-    print("type ytrain", type(y_train))
-    
-    return X_train, y_train
+def get_to_index():
+    global toIndex
+    return  toIndex
 
-def preprocess_y_train(raw, n_input, n_features):
-    raw = raw.drop(['date'], axis=1)
-    data = series_to_supervised(raw, n_in=n_input)
-    print("data to supervised", data)
-    data = data.values
-    print("data", type(data))
-    print("data", data)
-    
-    if n_features == 1:
-        y_train = [data[:, -1]]
-    else:
-        y_train = data[:, :n_features]
-    print("y_train_full", y_train)
-    
-    scaler = MinMaxScaler()
-    y_train = scaler.fit_transform(y_train)
-    
-    y_train =  np.squeeze(y_train)
-    
-    return y_train
+def get_n_steps():
+    global n_steps
+    return n_steps
 
-def preprocess_train(raw, n_seq, n_input, timesteps, n_features):
-    raw = raw.drop(['date'], axis = 1)
-    print("raw", raw)
-    print("raw columns", raw.columns)
-    print("raw index", raw.index)
- 
-    data = series_to_supervised(raw, n_in=n_input)
-    print("data shape 2", data.shape)
-    data = np.array(data.iloc[:, :n_input])
-    print("data shape 3", data.shape)
-    #normalize data
-    scaler = MinMaxScaler()
-    data = scaler.fit_transform(data)
-    
-    print("data", data)
-    
-    
-    #for CNN there is the need to reshape de 2-d np array to a 4-d np array [samples, timesteps, features]
-    #[batch_size, height, width, depth]
-    #[samples, subsequences, timesteps, features]
-    print("samples", data.shape[0])
-    print("subsequences", n_seq)
-    print("timesteps", timesteps)
-    print("features", n_features)
-    
-    rows = data.shape[0] * data.shape[1]
-    new_n_seq = round(rows/(data.shape[0]*timesteps*n_features))
+def get_n_epochs():
+    global n_epochs
+    return n_epochs
 
-    n_seq = new_n_seq
-    data = np.reshape(data, (data.shape[0], n_seq, timesteps, n_features))
-    
-    return data
+def get_fitness():
+    global fitness_func
+    return fitness_func
 
+def get_dimensions():
+    global dimensions
+    return dimensions
 
+def get_default_parameters():
+    global default_parameters
+    return default_parameters
 
-def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
-    y_train_full = list()
-    size = len(normal_sequence)
-    if size  > 1:
-        y_train_full = pd.concat(normal_sequence)
-    else:
-        print("normal_sequence", normal_sequence)
-        print("size", len(normal_sequence))
-        print(normal_sequence[0])
-        y_train_full = normal_sequence[0]
-    
-    print(type(y_train_full))
-    stime ="01-01-2017 00:00:00"
-    etime ="01-03-2017 00:00:00"
-        
-    frmt = '%d-%m-%Y %H:%M:%S'
-    min_date = datetime.datetime.strptime(stime, frmt)
-    max_date = datetime.datetime.strptime(etime, frmt)
-    print("min date", type(min_date))
-    print("type", y_train_full.dtypes)
-    
-    y_train_full = select_data(y_train_full, min_date, max_date)
-    y_train_full = y_train_full.drop(['date'], axis=1)
-    data = series_to_supervised(y_train_full, n_in=n_input)
-    print("data to supervised", data)
-    data = data.values
-    print("data", type(data))
-    print("data", data)
-    
-    if n_features == 1:
-        y_train_full = [data[:, -1]]
-    else:
-        y_train_full = data[:, :n_features]
-    print("y_train_full", y_train_full)
-    
-    
-    
-    scaler = MinMaxScaler()
-    y_train_full = scaler.fit_transform(y_train_full)
-    
-    y_train_full =  np.squeeze(y_train_full)
-    
-    return y_train_full
+def get_n_features():
+    global n_features
+    return n_features 
 
-#copiar isto para pai
-def generate_full_X_train(normal_sequence, n_seq, n_input, timesteps, n_features):
-    X_train_full = list()
-    size = len(normal_sequence)
-    if size  > 1:
-        X_train_full = pd.concat(normal_sequence)
-    else:
-        print("normal_sequence", normal_sequence)
-        print("size", len(normal_sequence))
-        print(normal_sequence[0])
-        X_train_full = normal_sequence[0]
-        
-    print("after concantening pieces", X_train_full)
-    print(type(X_train_full))
-    stime ="01-01-2017 00:00:00"
-    etime ="01-03-2017 00:00:00"
-
-    frmt = '%d-%m-%Y %H:%M:%S'
-    min_date = datetime.datetime.strptime(stime, frmt)
-    max_date = datetime.datetime.strptime(etime, frmt)
-    print("min date", type(min_date))
-    print("type", X_train_full.dtypes)
+def set_dimensions(arg):
+    global dimensions
+    dimensions = arg
     
-    X_train_full = select_data(X_train_full, min_date, max_date)
-    print("X_train_full after select data", X_train_full)
-    X_train_full = preprocess_train(X_train_full, n_seq, n_input, timesteps, n_features)
-    print("X_train_full shape>>>", X_train_full.shape)
-    return X_train_full
+def set_default_parameters(arg):
+    global default_parameters
+    default_parameters = arg
 
+def set_n_features(arg):
+    global n_features
+    n_features = arg
 
-def cnn_lstm(X_train, y_train, n_epochs, n_batch, n_kernel, n_filters, n_nodes, n_steps):
+def cnn_lstm(X_train, y_train, config):
+    toIndex = get_to_index()
+    n_steps = get_n_steps()
+    num_pooling_layers = tuning.get_param(config, toIndex, "num_pooling_layers")
+    n_stride = tuning.get_param(config, toIndex, "stride_size")
+    n_kernel = tuning.get_param(config, toIndex, "kernel_size")
+    n_filters = tuning.get_param(config, toIndex, "no_filters")
+    num_encdec_layers = tuning.get_param(config, toIndex, "num_encdec_layers")
+    learning_rate = tuning.get_param(config, toIndex, "learning_rate")
+    drop_rate_1 = tuning.get_param(config, toIndex, "drop_rate_1")
+    n_nodes = 100
+    
     n_features = X_train.shape[3]
     print("n_features", n_features)
-    size = n_steps*n_filters
+    
     model = Sequential()
-    model.add(TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu'), input_shape=(None,n_steps,n_features)))
-    model.add(TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu')))
+    model.add(TimeDistributed(Conv1D(filters=n_filters, strides=n_stride, kernel_size=n_kernel, activation='relu'), input_shape=(None,n_steps,n_features)))
+    for i in range(0, num_encdec_layers):
+        model.add(TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu')))
+    for i in range(0, num_pooling_layers):
+        name = 'pooling_layer_{0}'.format(i+1)
+        model.add(TimeDistributed(MaxPooling1D(pool_size=2, name=name)))
     model.add(TimeDistributed(MaxPooling1D(pool_size=2)))
     model.add(TimeDistributed(Flatten())) 
     #model.add((Dense(3)))
     #model.add(Reshape((1,2))) 
     model.add(LSTM(n_nodes, activation='relu', return_sequences=True))
+    for i in range(0, num_encdec_layers):
+        name = 'layer_lstm_decoder_{0}'.format(i+1)
+        model.add(LSTM(n_nodes, activation='relu', return_sequences=True, name=name))
     model.add(LSTM(n_nodes, activation='relu', return_sequences=False))
-    model.add(Dropout(0.2))
+    model.add(Dropout(drop_rate_1))
     model.add(Dense(n_features))
  
     
    
     #plot_model(model, to_file='model_plot.png', show_shapes=True, show_layer_names=True)
     
-    model.compile(loss='mse', optimizer='adam')
+    adam = Adam(lr=learning_rate)
+    model.compile(loss='mse', optimizer=adam)
   
     print(model.summary())
     outputs = [layer.output for layer in model.layers]
@@ -203,20 +146,20 @@ def cnn_lstm(X_train, y_train, n_epochs, n_batch, n_kernel, n_filters, n_nodes, 
   
     return model
 
-def multi_head(X_train, y_train, n_epochs, n_batch, n_kernel, n_filters, n_nodes, n_steps):
+def multi_head(X_train, y_train, config): 
+    toIndex = get_to_index()
+    n_steps = get_n_steps()
+    num_pooling_layers = tuning.get_param(config, toIndex, "num_pooling_layers")
+    stride_size = tuning.get_param(config, toIndex, "stride_size")
+    n_kernel = tuning.get_param(config, toIndex, "kernel_size")
+    n_filters = tuning.get_param(config, toIndex, "no_fitlers")
+    num_encdec_layers = tuning.get_param(config, toIndex, "num_encdec_layers")
+    learning_rate = tuning.get_param(config, toIndex, "learning_rate")
+    drop_rate_1 = tuning.get_param(config, toIndex, "drop_rate_1")
+                   
     print("X_train shape", X_train.shape)
     print("y train shape", y_train.shape)
     n_features = X_train.shape[3]
-    input_data = list()
-    
-    for i in range(n_features):
-        aux = X_train[:, :, :, i]
-        print("aux shape", aux.shape)
-        reshaped = aux.reshape((aux.shape[0], aux.shape[1], aux.shape[2], 1))
-        input_data.append(reshaped)
-     
-        print("reshaped", reshaped.shape)
-      
    
     print("no features", n_features)
     # create a channel for each time series/sensor
@@ -228,40 +171,122 @@ def multi_head(X_train, y_train, n_epochs, n_batch, n_kernel, n_filters, n_nodes
         conv1 = TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu'))(inputs)
         conv2 = TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu'))(conv1)
         print("conv shape", conv2.shape)
-        pool1 = TimeDistributed(MaxPooling1D(pool_size=2))(conv2)
+        list_conv = list()
+        for i in range(0, num_encdec_layers):
+            list_conv.append(TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu')))
+      
+        last_conv = None
+        group_conv = list()
+        for i in range(0, len(list_conv)):
+            try:
+                back_conv = list_conv[i-1]
+                new_conv = list_conv[i]
+                group_conv[i] = new_conv(back_conv)
+            except IndexError:
+                back_conv = conv2
+                new_conv = list_conv[i]
+                group_conv[i] = new_conv(back_conv)
+            
+        last_conv = group_conv[len(group_conv)-1]
+        list_pool = list()
+        group_pool = list()
+        pool1 = TimeDistributed(MaxPooling1D(pool_size=2))(last_conv)
         print("pool1 shape", pool1.shape)
-        flat = TimeDistributed(Flatten())(pool1)
+        for i in range(0, num_pooling_layers):
+            name = 'pooling_layer_{0}'.format(i+1)
+            list_pool.append(TimeDistributed(MaxPooling1D(pool_size=2)), name=name)
+            
+        for i in range(0, len(list_pool)):
+            try:
+                back_pool = list_pool[i-1]
+                new_pool = list_pool[i]
+                group_pool[i] = new_pool(back_pool)
+            except IndexError:
+                pass
+            
+        
+        last_pool = group_pool[len(list_pool)-1]
+        flat = TimeDistributed(Flatten())(last_pool)
         print("flat config", flat.shape)
+        
         # store layers
         in_layers.append(inputs)
         out_layers.append(flat)
+        
     # merge heads
     merged = concatenate(out_layers)
     recurrent_1 = LSTM(100, activation='relu', return_sequences=True)(merged)
     recurrent_2 = LSTM(100, activation='relu', return_sequences=False)(recurrent_1)
-    dropout_1 = Dropout(0.2)(recurrent_2)
+    dropout_1 = Dropout(drop_rate_1)(recurrent_2)
     outputs= Dense(n_features)(dropout_1)
     
     model = Model(inputs=in_layers, outputs=outputs)
 	# compile model
-    model.compile(loss='mse', optimizer='adam')
-    model.fit(input_data, y_train, epochs=n_epochs, batch_size=n_batch)
+    adam = Adam(lr=learning_rate)
+    model.compile(loss='mse', optimizer=adam)
+    
     print("end compile")
     return model
 
-
-def concatenate_features(df_list_1, df_list_2):
-    list_result = list()
-    for i in range(0, len(df_list_1)):
-        df_1 = df_list_1[i]
-        df_2 = df_list_2[i]
-        df_2 = df_2.drop(["date"], axis=1)
-        df_2.columns = ["value_2"]
-        result = pd.concat([df_1, df_2], axis=1, sort=False)
-        list_result.append(result)
-        
-    return list_result
+def hyperparam_opt(timesteps): 
+    toIndex = get_to_index()
+    dimensions, default_parameters = tuning.get_param_conv_layers(timesteps)
+         
+    dimensions += tuning.get_param_encdec(timesteps)[0]
     
+    default_parameters += tuning.get_param_encdec(timesteps)[1]
+    
+    set_dimensions(dimensions)
+    set_default_parameters(default_parameters)
+    
+    for i in range(0, len(dimensions)):
+        toIndex[dimensions[i].name] = i
+        
+hyperparam_opt(timesteps)
+@use_named_args(dimensions=dimensions)
+def fitness(num_pooling_layers, stride_size, kernel_size, no_filters, num_encdec_layers, batch_size, learning_rate, drop_rate_1):  
+    init = time.perf_counter()
+    print("fitness>>>")
+    n_steps = get_n_steps()
+    n_features = get_n_features()
+      
+    _, normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp", limit=True, df_to_csv=True)
+    normal_sequence = generate_normal("12", limit=True, n_limit=129600, df_to_csv = True)
+    
+    X_train_full, y_train_full = utils.generate_full(normal_sequence, n_steps, model="CNN", n_seq=n_seq, n_input=n_input, n_features=n_features)
+   
+    config = [num_pooling_layers, stride_size, kernel_size, no_filters, num_encdec_layers, batch_size, learning_rate,  drop_rate_1]
+    
+    model = type_model_func(X_train_full, y_train_full, config) 
+                      
+    
+    print("total number of chunks", len(normal_sequence))
+    no_chunks = 0
+    for df_chunk in normal_sequence:
+        no_chunks += 1
+        print("number of chunks:", no_chunks)
+        X_train, y_train = utils.generate_sets(df_chunk, n_steps, "CNN", n_seq, n_input, n_features) 
+        es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
+        input_data = list()
+        if type_model == "multi-channel":
+            input_data = utils.split_features(n_features, X_train)
+            hist = model.fit(input_data, y_train, epochs=100, batch_size= batch_size, callbacks=[es])
+        else:
+            hist = model.fit(X_train, y_train, epochs=100, batch_size= batch_size, callbacks=[es])
+    
+    loss = hist.history['loss'][-1]
+    
+    del model
+    
+    clear_session()
+    tensorflow.compat.v1.reset_default_graph()
+    
+    end = time.perf_counter()
+    diff = end - init
+    
+    return loss, diff
+
+fitness_func = fitness
 
 #config
 #n_input: The number of lag observations to use as input to the model.
@@ -269,44 +294,68 @@ def concatenate_features(df_list_1, df_list_2):
 #n_kernel: The number of time steps considered in each read of the input sequence.
 #n_epochs: The number of times to expose the model to the whole training dataset.
 #n_batch: The number of samples within an epoch after which the weights are updated
-def test():
-    n_seq = 10
-    n_steps = 96 
-    n_filters = 1
-    n_kernel = 20
-    n_nodes = 100
-    n_epochs = 20
-    n_batch = 1
-    n_input = n_seq * n_steps
-    n_features = 1
-    print("n_input", n_input)
+
+def do_train(architecture="multi-channel", bayesian=False, simulated=False, save=True):
+    global type_model, type_model_func, timesteps, toIndex
+    if architecture == "multi-head":
+        type_model_func = multi_head
+        type_model = architecture
+    elif architecture == "multi-channel":
+        type_model_func = cnn_lstm
+        type_model = architecture
+    else:
+        raise ValueError('No such architecture')
+       
+    set_n_features(1)
+    config = get_default_parameters()
+    if bayesian == True:
+       
+        fitness = get_fitness()
+        dimensions = get_dimensions()
+        default_parameters = get_default_parameters()
+        
+        param = tuning.do_bayesian_optimization(fitness, dimensions, default_parameters)
+        config = param
+        
+    stime ="01-01-2017 00:00:00"
+    etime ="01-03-2017 00:00:00"
     
-    sequence, normal_sequence, anomalous_sequence = generate_sequences("12", "sensortgmeasurepp", limit=True, df_to_csv=True)
-    sequence_2, normal_sequence_2, anomalous_sequence_2 = generate_sequences("11", "sensortgmeasurepp", limit=True, df_to_csv=True)
-    list_result = concatenate_features(normal_sequence, normal_sequence_2)
+    normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp",start=stime, end=etime, simulated=simulated, df_to_csv=True)
+    normal_sequence_2, _ = generate_sequences("11", "sensortgmeasurepp",start=stime, end=etime, simulated=simulated, df_to_csv=True)
+   
+    list_result = utils.concatenate_features(normal_sequence, normal_sequence_2)
     print("list_result", list_result)
     n_features = 2
     normal_sequence = list_result
     
-    y_train_full = generate_full_y_train(normal_sequence, n_input, n_steps, n_features)
+    print("to index", toIndex["batch_size"] )
+    print("dimensions", len(config))
+    batch_size = tuning.get_param(config, toIndex, "batch_size")
+      
+    X_train_full, y_train_full = utils.generate_full(normal_sequence, n_steps, model="CNN", n_input=n_input, n_features=n_features)
     print("y_train_full shape", y_train_full.shape)
-    X_train_full = generate_full_X_train(normal_sequence, n_seq, n_input, n_steps, n_features)
     print("x_train_full shape", X_train_full.shape)
-    #model = cnn_lstm(X_train_full, y_train_full, n_epochs, n_batch, n_kernel, n_filters, n_nodes, n_steps)
-
-    model = multi_head(X_train_full, y_train_full, n_epochs, n_batch, n_kernel, n_filters, n_nodes, n_steps)
-    history = list()
+    
+    
+    model = type_model_func(X_train_full, y_train_full, config)
     number_of_chunks = 0
     for df_chunk in normal_sequence:
+        #if is_best_model:
+        #    model = load_model("best_autoencoderLSTM.h5")
         number_of_chunks += 1
         print("number of chunks:", number_of_chunks)
+        X_train, y_train = utils.generate_sets(df_chunk, timesteps, type_input="CNN",n_seq = n_seq,n_input=n_input,n_features=n_features)  
         es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
-        mc = ModelCheckpoint('best_model.h5', monitor='val_loss', mode='min', save_best_only=True)
-        X_train, y_train = generate_sets(df_chunk, n_seq, n_input, n_steps, n_features)
-        print("X_train for train shape", X_train.shape)
-        print("y_train for train shape", y_train.shape) 
-        # fit
-        history = model.fit(X_train, y_train, epochs=20, batch_size=n_batch, callbacks=[es, mc]).history
-       
-
+        mc = ModelCheckpoint('best_autoencoderLSTM.h5', monitor='val_loss', mode='min', save_best_only=True)
+        history = model.fit(X_train, y_train, epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
+    
+        
+    
     return True
+    
+    
+
+
+    
+    
+    

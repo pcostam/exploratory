@@ -30,7 +30,7 @@ target_options = [
         ('upload',None,gui.Button.upload),
         ('sensor_type',["all"],gui.Button.multidrop,["all"]), 
         ('sensor_name',["all"],gui.Button.multidrop,["all"]), 
-        ('period',['2018-10-02','2018-10-11'],gui.Button.daterange),
+        ('period',['2017-01-01','2017-03-01'],gui.Button.daterange),
         ('calendar',list(gui.calendar.keys())+list(gui.week_days.keys()),gui.Button.multidrop,['all']),
         ('time_sampling_(seconds)','60',gui.Button.input)]
 processing_parameters = [
@@ -84,11 +84,11 @@ def get_data(df, states, series=False):
     print("thresh", anomaly_threshold)
   
     #print("dias", dias)
-    Learner.operation(df, method, start, end, granularity, anomaly_threshold)
+    return Learner.operation(df, method, start, end, granularity, anomaly_threshold)
     
     '''B: retrieve data'''
     #data, name, = retrieve_data(idate,fdate,contagem,dias,estacoes_entrada,estacoes_saida,minutes,["record_count"])'''
-    return None #series_utils.fill_time_series(data,name,idate,fdate,minutes)
+    #series_utils.fill_time_series(data,name,idate,fdate,minutes)
 
 def retrieve_data(idate, fdate, contagem, dias, estacoes_entrada, estacoes_saida, minutes, record):
     
@@ -145,11 +145,13 @@ def update_graph(n_clicks, *args):
         print("type", type(df))
         print("init df.columns", df.columns)
         print("init df.index", df.index)
-        data = get_data(df, states, series=False)
+        anomalies = get_data(df, states, series=False)
+        print("anomalies", anomalies)
         df.index = df['date']
         df = df.drop(['date'], axis = 1)
         series = df
         fig = plot_utils.get_series_plot(series,'titulo aqui')
+        plot_utils.add_anomalie_scores(fig, anomalies)
     return fig
 
 

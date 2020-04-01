@@ -31,14 +31,22 @@ import datetime
 from keras.optimizers import Adam
 from architecture.evaluate import f_beta_score
 import time
+import pickle
+import os
+import utils
+import tuning
 
-X_train = pd.DataFrame()
-X_val_1 = pd.DataFrame()
+#PARAMETERS
 config = [2, 128, 1e-2, 0.5, 0.5]
+mu = 0
+sigma = 0
+timesteps = 0
+min_th = 0
 
+#see https://towardsdatascience.com/lstm-autoencoder-for-anomaly-detection-e1f4f2ee7ccf
+#https://towardsdatascience.com/lstm-autoencoder-for-extreme-rare-event-classification-in-keras-ce209a224cfb
 #see https://medium.com/@crawftv/parameter-hyperparameter-tuning-with-bayesian-optimization-7acf42d348e1
 def hyperparam_opt():
-   
     dim_num_lstm_layers = Integer(low=0, high=20, name='num_lstm_layers')
     dim_batch_size = Integer(low=64, high=128, name='batch_size')
     #dim_adam_decay = Real(low=1e-6,high=1e-2,name="adam_decay")
@@ -73,7 +81,7 @@ def fitness(num_lstm_layers, batch_size, learning_rate, drop_rate_1, drop_rate_2
     
    
     normal_sequence = generate_normal("12", limit=True, n_limit=129600, df_to_csv = True)
-    X_train_full = generate_full_X_train(normal_sequence, 96)
+    X_train_full, _ = utils.generate_full(normal_sequence, 96)
     model = autoencoder_model(X_train_full, num_lstm_layers, learning_rate, drop_rate_1, drop_rate_2)
     
     print("total number of chunks", len(normal_sequence))
@@ -81,22 +89,12 @@ def fitness(num_lstm_layers, batch_size, learning_rate, drop_rate_1, drop_rate_2
     for df_chunk in normal_sequence:
         no_chunks += 1
         print("number of chunks:", no_chunks)
-        X_train, X_val_1, X_val_2 = generate_sets(df_chunk, 96) 
+        X_train, X_val_1, X_val_2 = utils.generate_sets(df_chunk, 96) 
         es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
         hist = model.fit(X_train, X_train, validation_data=(X_val_1, X_val_1), epochs=100, batch_size= batch_size, callbacks=[es])
     
-    
-    #print(hist.history.keys())
-    #accuracy = 0
-    """
-    try:
-        accuracy = hist.history['val_accuracy'][-1]
-    except KeyError:
-        accuracy = hist.history['val_acc'][-1]
-    """
     loss = hist.history['loss'][-1]
     
-    #print("Accuracy: {0:.2%}".format(accuracy))
     del model
     
     # Clear the Keras session, otherwise it will keep adding new
@@ -107,8 +105,7 @@ def fitness(num_lstm_layers, batch_size, learning_rate, drop_rate_1, drop_rate_2
     
     end = time.perf_counter()
     diff = end - init
-    # the optimizer aims for the lowest score, so we return our negative accuracy
-    #return -accuracy
+    
     return loss, diff
   
 #see https://medium.com/@shivajbd/understanding-input-and-output-shape-in-lstm-keras-c501ee95c65e
@@ -140,144 +137,17 @@ def autoencoder_model(X, num_lstm_layers, learning_rate, drop_rate_1, drop_rate_
     
     return model
 
-def get_mu(vector):
-    return np.mean(vector, axis=0)
 
-def get_sigma(vector, mu):
-     mu_T = np.array([mu], dtype=np.float32).T
-     cov = np.zeros((mu.shape[0], mu.shape[0]))
-     for e_i in vector:
-            e_i_T = np.array([e_i], dtype=np.float32).T
-            sig = np.dot((e_i_T-mu_T), (e_i_T-mu_T).T)
-            cov += sig
-     sigma = cov / vector.shape[0]
-     print(sigma)
-     return sigma
-    
-#https://scipy-lectures.org/intro/numpy/operations.html
-def get_error_vector(x_input, x_output):
-    return np.abs(x_output - x_input)
-    
- # calculate anormaly score (X-mu)^Tsigma^(-1)(X-mu)
-def anomaly_score(mu, sigma, X):
-    sigma_inv= np.linalg.inv(sigma)
-    a = np.zeros(X.shape[0])
-    for i in range(0, X.shape[0]):
-            a[i] = (X[i] - mu).T*sigma_inv*(X[i] - mu)
-    return a
-    
-def plot_training_losses(history):
-    fig, ax = plt.subplots(figsize=(14,6), dpi=80)
-    ax.plot(history['loss'], 'b', label='Train', linewidth=2)
-    ax.plot(history['val_loss'], 'r', label='Validation', linewidth=2)
-    ax.set_title('Model loss', fontsize=16)
-    ax.set_ylabel('Loss (mae)')
-    ax.set_xlabel('Epoch')
-    ax.legend(loc='upper right')
-    plt.show()
-  
-
-def preprocess(raw, timesteps):
-    raw = raw.drop(['date'], axis = 1)
-    data = np.array(raw['value'])
-    data = series_to_supervised(raw, n_in=timesteps)
-    data = np.array(data.iloc[:, :timesteps])
-    
-    #normalize data
-    scaler = MinMaxScaler()
-    data = scaler.fit_transform(data)
-    
-    #for lstm there is the need to reshape de 2-d np array to a 3-d np array [samples, timesteps, features]
-    data = data.reshape((data.shape[0], data.shape[1],1))
-    
-    return data
-    
-    
-def generate_full_X_train(normal_sequence, timesteps):
-    X_train_full = list()
-    size = len(normal_sequence)
-    if size  > 1:
-        X_train_full = pd.concat(normal_sequence)
-    else:
-        print("normal_sequence", normal_sequence)
-        print("size", len(normal_sequence))
-        print(normal_sequence[0])
-        X_train_full = normal_sequence[0]
-    print(type(X_train_full))
-    stime ="01-01-2017 00:00:00"
-    etime ="01-03-2017 00:00:00"
-
-    frmt = '%d-%m-%Y %H:%M:%S'
-    min_date = datetime.datetime.strptime(stime, frmt)
-    max_date = datetime.datetime.strptime(etime, frmt)
-    print("min date", type(min_date))
-    print("type", X_train_full.dtypes)
-    
-    X_train_full = select_data(X_train_full, min_date, max_date)
-    X_train_full = preprocess(X_train_full, timesteps)
-    return X_train_full
-
-def generate_sets(normal_sequence, timesteps):
-    print("normal_sequence", normal_sequence)
+def test_autoencoder(simulated = False, bayesian=False, save=True):
+    global config, mu, sigma
     
     stime ="01-01-2017 00:00:00"
     etime ="01-03-2017 00:00:00"
 
-    frmt = '%d-%m-%Y %H:%M:%S'
-    min_date = datetime.datetime.strptime(stime, frmt)
-    max_date = datetime.datetime.strptime(etime, frmt)
-    X_train_D = select_data(normal_sequence, min_date, max_date)
-    
-    size_X_train_D = X_train_D.shape[0]
-    size_train = round(size_X_train_D*0.8)
-    
-    X_train = X_train_D.iloc[:size_train, :]
-    X_val = X_train_D.iloc[size_train:, :]
-  
-    size_val = round(0.5*X_val.shape[0])
-   
-    X_val_1_D = X_val.iloc[:size_val, :]
-    X_val_2_D = X_val.iloc[size_val:, :]
-    
-    X_train = preprocess(X_train_D, timesteps)
-    X_val_1 = preprocess(X_val_1_D, timesteps)
-    X_val_2 = preprocess(X_val_2_D, timesteps)
-    
-    return X_train, X_val_1, X_val_2
-
-def generate_sets_days(normal_sequence, timesteps):
-    print("normal_sequence", type(normal_sequence))
-    
-    stime ="01-01-2017 00:00:00"
-    etime ="01-03-2017 00:00:00"
-
-    frmt = '%d-%m-%Y %H:%M:%S'
-    min_date = datetime.datetime.strptime(stime, frmt)
-    max_date = datetime.datetime.strptime(etime, frmt)
-    
-    X_train_D = select_data(normal_sequence, min_date, max_date)
-    
-    size_X_train_D = X_train_D.shape[0]
-    size_train = round(size_X_train_D*0.8)
-    
-    X_train = X_train_D.iloc[:size_train, :]
-    X_val = X_train_D.iloc[size_train:, :]
-  
-    size_val = round(0.5*X_val.shape[0])
-   
-    X_val_1_D = X_val.iloc[:size_val, :]
-    X_val_2_D = X_val.iloc[size_val:, :]
-    
-    return X_train, X_val_1_D, X_val_2_D
-    
-#see https://towardsdatascience.com/lstm-autoencoder-for-anomaly-detection-e1f4f2ee7ccf
-#https://towardsdatascience.com/lstm-autoencoder-for-extreme-rare-event-classification-in-keras-ce209a224cfb
-def test_autoencoder(bayesian=False):
-    global config
-    sequence, normal_sequence, anomalous_sequence = generate_sequences("12", "sensortgmeasurepp", limit=True, df_to_csv=True)
-    
+    normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp",start=stime, end=etime, simulated=simulated, df_to_csv=True)
+    print("test normal_sequence", normal_sequence[0].shape)
     if bayesian == True:
-        param = do_bayesian_optimization()
+        param = tuning.do_bayesian_optimization()
         config = param
         
     num_lstm_layers = get_num_layers_lstm(config)
@@ -302,30 +172,40 @@ def test_autoencoder(bayesian=False):
     #15 min frequency a day is 96
     timesteps = 96
     
-    X_train_full = generate_full_X_train(normal_sequence,timesteps)
+    X_train_full, _ = utils.generate_full(normal_sequence,timesteps)
     model = autoencoder_model(X_train_full, num_lstm_layers, learning_rate, drop_rate_1, drop_rate_2)
     
     number_of_chunks = 0
     history = list()
     is_best_model = False
+    validation = True
+    if simulated == True:
+        validation = False
+        
     for df_chunk in normal_sequence:
         if is_best_model:
             model = load_model("best_autoencoderLSTM.h5")
         number_of_chunks += 1
         print("number of chunks:", number_of_chunks)
-        X_train, X_val_1, X_val_2 = generate_sets(df_chunk, timesteps)  
+        X_train, X_val_1, X_val_2 = utils.generate_sets(df_chunk, timesteps, validation=validation)  
         es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         mc = ModelCheckpoint('best_autoencoderLSTM.h5', monitor='val_loss', mode='min', save_best_only=True)
-        history = model.fit(X_train, X_train, validation_data=(X_val_1, X_val_1), epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
+        if validation:
+            history = model.fit(X_train, X_train, validation_data=(X_val_1, X_val_1), epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
+        else:
+            history = model.fit(X_train, X_train, epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
         is_best_model = True
-        
-    model.save("autoencoderLSTM.h5")
+      
+    filename = 'autoencoderLSTM.h5'
+    path = os.path.join("..//gui_margarida//gui//assets", filename)
+    model.save(path)
     print("Saved model to disk")
     
-    model = load_model('autoencoderLSTM.h5')
+    model = load_model(path)
     print("Loaded model")
         
-    plot_training_losses(history)
+    if validation == False:
+        utils.plot_training_losses(history)
     X_pred = model.predict(X_train_full)
     print("shape pred:", X_pred.shape)
     print(X_pred)
@@ -354,18 +234,8 @@ def test_autoencoder(bayesian=False):
         
     X_pred = model.predict(X_val_1)
         
-    X_pred =  np.squeeze(X_pred)
-    X_pred = X_pred[:,0]
-    X_pred = X_pred.reshape(X_pred.shape[0],1)
-        
-    Xval1 =  np.squeeze(X_val_1)
-    Xval1 = X_val_1[:,0]
-    Xval1 = Xval1.reshape(Xval1.shape[0],1)
-        
-        
-    vector = get_error_vector(Xval1, X_pred)
-    vector = np.squeeze(vector)
-        
+    vector = utils.get_error_vector(X_val_1, X_pred)
+    vector = np.squeeze(vector)    
     plt.hist(list(vector), bins=20)
     plt.show()
         
@@ -373,46 +243,23 @@ def test_autoencoder(bayesian=False):
     print("vector shape", vector.shape)
     print(vector)
         
-    mu = get_mu(vector)
-    sigma = get_sigma(vector, mu)
+    mu = utils.get_mu(vector)
+    sigma = utils.get_sigma(vector, mu)
         
-    score = anomaly_score(mu, sigma, vector)
+    score = utils.anomaly_score(mu, sigma, vector)
  
-    X_pred = model.predict(X_val_2)
+    X_pred = model.predict(X_val_2) 
+    vector = utils.get_error_vector(X_val_2, X_pred)
     
-    X_pred =  np.squeeze(X_pred)
-    X_pred = X_pred[:,0]
-    X_pred = X_pred.reshape(X_pred.shape[0],1)
-    
-    
-    Xval2 =  np.squeeze(X_val_2)
-    Xval2 = X_val_2[:,0]
-    Xval2 = Xval2.reshape(Xval2.shape[0],1)
-    
-    vector = get_error_vector(Xval2, X_pred)
-    vector = np.squeeze(vector)
-        
-    score = anomaly_score(mu, sigma, vector)
+    vector = utils.np.squeeze(vector)
+    score = utils.anomaly_score(mu, sigma, vector)
     
     normal_sequence_full = pd.concat(normal_sequence)
  
-    _, _, X_val_2_D = generate_sets_days(normal_sequence_full, timesteps)
-    thresholds = [0.05, 0.5, 1, 2, 3]
-    all_anormals = list()
-    for th in thresholds:
-        no_anomalous = 0
-        i = 0
-        for sc in score:
-            if sc > th:
-                no_anomalous += 1
-                date = X_val_2_D['date'].iloc[i]
-            i += 1
-        print("no_anomalous", no_anomalous)
-        all_anormals.append(no_anomalous)
-    all_anormals = np.array(all_anormals)
-    index_min = np.argmin(all_anormals)
-    min_th = thresholds[index_min]
+    _, _, X_val_2_D = utils.generate_sets_days(normal_sequence_full, timesteps)
     
+    min_th = utils.get_threshold(X_val_2_D, score)
+
     dates_list = list()
     #positive class is anomaly
     FP = 0
@@ -435,9 +282,104 @@ def test_autoencoder(bayesian=False):
     
     #print("accuracy", accuracy)
     
- 
+    if save == True:
+        save_parameters(mu, sigma, timesteps, min_th)
+    
     return True
 
+def save_parameters(mu, sigma, timesteps, min_th):
+    param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'min_th':min_th}
+    filename = 'parametersAutoencoderLSTM.pickle'
+    path = os.path.join("..//gui_margarida//gui/assets", filename)
+    with open(path, 'wb') as f:  
+        pickle.dump(param, f, protocol=pickle.HIGHEST_PROTOCOL)
+    return True
+
+def load_parameters():
+    global mu, sigma, timesteps, min_th
+    filename = 'parametersAutoencoderLSTM.pickle'
+    current_dir = os.getcwd()
+    print("current dir", current_dir)
+    path = ""
+    if current_dir == "F:\\manual\\Tese\exploratory\\wisdom\\architecture":
+        path = os.path.join("..//gui_margarida//gui//assets", filename)
+    else:
+        path = os.path.join(current_dir + '//assets//' + filename)
+    
+    # Getting back the objects:
+    with open(path, 'rb') as f:  
+        param = pickle.load(f)
+    
+    mu = param['mu']
+    sigma = param['sigma']
+    timesteps = param['timesteps']
+    min_th = param['min_th']
+    
+    return param
+
+def detect_anomalies(X_test, choose_th=None):
+    print("shape", X_test.shape)
+    param = load_parameters()
+    
+    
+    
+    filename = 'autoencoderLSTM.h5'
+    current_dir = os.getcwd()
+    print("current dir", current_dir)
+    path = ""
+    if current_dir == "F:\\manual\\Tese\exploratory\\wisdom\\architecture":
+        path = os.path.join("..//gui_margarida//gui//assets", filename)
+    else:
+        path = os.path.join(current_dir + '//assets//' + filename)
+        
+    model = load_model(path) 
+    
+    mu = param['mu']
+    sigma = param['sigma']
+    timesteps = param['timesteps']
+    print("mu", mu)
+    print("sigma", sigma)
+    print("timesteps", timesteps)
+    
+    anomalies_th = param['min_th']
+    if choose_th != None:
+        anomalies_th = choose_th
+        
+    print("treshold", anomalies_th)
+    
+    Xtest = utils.preprocess(X_test, timesteps)
+    print("Xtest shape", Xtest.shape)
+    print("Xtest type", type(Xtest))
+    
+    print("Predict")
+    X_pred = model.predict(Xtest)
+
+    predict = pd.DataFrame()
+    
+    vector = utils.get_error_vector(Xtest, X_pred)
+    vector = np.squeeze(vector)
+        
+    score = utils.anomaly_score(mu, sigma, vector)
+    
+    values = list()
+    dates = list()
+    anomalies = 0
+    i = 0
+    for sc in score:
+        if sc > anomalies_th:
+             anomalies += 1
+             value = X_test['value'].iloc[i]
+             date = X_test['date'].iloc[i]
+             dates.append(date)
+             values.append(value)
+        i += 1
+        
+    print("no. anomalies", anomalies)
+    print("predict", predict)
+    
+    predict['value'] = values
+    predict['date'] = dates
+    return predict
 
 def get_dim_drop_rate_2(dimensions):
     return dimensions[4]
@@ -450,30 +392,9 @@ def get_dim_batch_size(dimensions):
 def get_num_layers_lstm(dimensions):
     return dimensions[0]
 
-
-def do_bayesian_optimization():
-    dimensions,  default_parameters = hyperparam_opt()
-    print("START BAYESIAN OPTIMIZATION")
-    es = DeltaYStopper(0.01)
-    
-    #signal.alarm(120)
-    gp_result = gp_minimize(func=fitness,
-                                dimensions=dimensions,
-                                n_calls=11,
-                                noise= 0.01,
-                                n_jobs=-1,
-                                x0=default_parameters,
-                                callback=es, 
-                                random_state=12,
-                                acq_func="EIps")
-    param = gp_result.x     
-    clear_session()
-    
-    return param 
- 
-
 def operation(data, anomaly_threshold):
-    return True
+    prediction = detect_anomalies(data, None)
+    return prediction
     
 
  

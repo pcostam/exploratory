@@ -140,6 +140,7 @@ def select_data(df, min_date, max_date):
     print("SELECT DATA 2")
     print("df.index", df.index)
     print("df.columns", df.columns)
+    print("df.empty", df.empty)
     df['date'] = pd.to_datetime(df['date'])
     min_date = pd.to_datetime(min_date)
     max_date = pd.to_datetime(max_date)
@@ -148,7 +149,13 @@ def select_data(df, min_date, max_date):
         #df.reset_index(level=0, inplace=True)
         return df
     else:
+        old_df = df.copy()
         df = df[(df['date'] >= min_date) & (df['date'] <= max_date)]
+        if df.empty:
+            print("df is empty. return old df")
+            print("old_df.empty", old_df.empty)
+            return old_df
+        print("df head", df.head())
         print("df.index", df.index)
         print("df.columns", df.columns)
         df.index = pd.RangeIndex(start=0, stop=df.shape[0])
@@ -179,38 +186,40 @@ def find_gap(df, frequency):
                  #there is gap
                  print("gap", index)
                  res.append(index)
-         except KeyError as e:
+         except KeyError:
              pass
      return res
     
-def csv_to_chunks(sensorId, path, limit=True, n_limit=1000):
+def csv_to_chunks(sensorId, path, start=None, end=None, n_limit=None):
+    print("csv_to_chunks")
     list_df = list()
-    if limit == True:
+    df = pd.DataFrame()
+    
+    if n_limit != None:
         df = pd.read_csv(path, nrows = n_limit)
-        df = downsample(df, '15min')
-        print("after downsample", df)
-        indexes = find_gap(df, 15)
-        list_df = np.split(df, indexes)
-        print("list df", list_df)
-        #DO THIS IN INDEXES, IT'S MORE EASY!
-        #TODO
-        for i in range(0, len(list_df)):
-            if list_df[i].shape[0] > 2000:
-                size = list_df[i].shape[0]
-                df_1 = list_df[i].iloc[:size,:]
-                df_2 = list_df[i].iloc[size:,:]
-                
-                
-      
-     
+        
     else:
         df = pd.read_csv(path)
-        df = downsample(df, '15min')
-        #list_df = np.array_split(df, 5)
-        indexes = find_gap(df, 15)
-        list_df = np.split(df, indexes)
         
-        
+    if start != None and end != None:
+        df = select_data(df, start, end)
+  
+    df = downsample(df, '15min')
+       
+    indexes = find_gap(df, 15)
+    list_df = np.split(df, indexes)
+    print("list df", list_df)
+    
+    #DO THIS IN INDEXES, IT'S MORE EASY!
+    #TODO
+    """
+    for i in range(0, len(list_df)):
+        if list_df[i].shape[0] > 2000:
+            size = list_df[i].shape[0]
+            df_1 = list_df[i].iloc[:size,:]
+            df_2 = list_df[i].iloc[size:,:]
+    """
+                       
     return list_df
 
 def csv_to_TextFileReader(sensorId, path, limit=True, n_limit=1000):
@@ -341,28 +350,35 @@ def generate_anomalous(idSensor, limit=True, df_to_csv = False):
  
 
    
-def generate_normal(idSensor, limit=True, n_limit=1000, df_to_csv = False, to_chunks=True):
+def generate_normal(idSensor, start=None, end=None, simulated=False, n_limit=None, df_to_csv = False, to_chunks=True):
     df = pd.DataFrame()
     if df_to_csv: 
         init_path = os.path.dirname(os.getcwd())
         path = ""
-        if init_path == "/content/drive/My Drive/Tese/exploratory":
-            path =  init_path + "/wisdom/dataset/infraquinta/real/normal/sensor_"+ str(idSensor) + ".csv"
+        if simulated == False:
+            if init_path == "/content/drive/My Drive/Tese/exploratory":
+                path =  init_path + "/wisdom/dataset/infraquinta/real/normal/sensor_"+ str(idSensor) + ".csv"
+            else:
+                path = init_path + "\\dataset\\infraquinta\\real\\normal\\sensor_" + str(idSensor) + ".csv"
         else:
-            path = init_path + "\\dataset\\infraquinta\\real\\normal\\sensor_" + str(idSensor) + ".csv"
-     
+             if init_path == "/content/drive/My Drive/Tese/exploratory":
+                print("drive path simulated")
+              
+             else:
+                path =  init_path + "\\dataset\\simulated\\telegestao\\winter\\sensor_"+ str(idSensor) + ".csv"
+                 
         #df = csv_to_df(idSensor, path, limit=limit)
         if to_chunks == True:
-            df = csv_to_chunks(idSensor, path, limit=limit, n_limit=n_limit)
+            df = csv_to_chunks(idSensor, path, start=start, end=end, n_limit=n_limit)
         else:
-            df = csv_to_df(idSensor, path, limit=limit, n_limit=n_limit)
-        
+            df = csv_to_df(idSensor, path, n_limit=n_limit)
+          
     else:
         db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
         conn = create_engine(db_connection)
         query = ""
     
-        if limit == False:
+        if n_limit == None:
             query = """
              SELECT ATG.date, STM.value
             FROM infraquinta.anomaliestg as ATG, infraquinta.sensortgmeasurepp as STM
@@ -380,32 +396,23 @@ def generate_normal(idSensor, limit=True, n_limit=1000, df_to_csv = False, to_ch
     return df
 
 def downsample(df, minutes):
-     print("test 4")
-     print("test downsample")
-     print("minutes", minutes)
-     print("df columns", df.columns)
-     print("index", df.index)
      df['date'] = pd.to_datetime(df['date'])
-     aux_1 = df['date'].copy()
      aux = df['date'].copy()
      df.index = aux
      df = df.resample(minutes).mean()
-     print("df.index", df.index)
-     print("df.columns", df.columns)
-     print("aux 1", aux_1)
-   
+     df['date'] = df.index.copy()
      df.index = pd.RangeIndex(start=0, stop=df.shape[0])
-     df['date'] = aux_1
-     print("df_date", df['date'])
-     print("df index", df.index)
-     print("df columns", df.columns)
      return df
  
-def generate_sequences(sensorId, table, limit = True, df_to_csv = False):
-    all_sequence = pd.DataFrame()
+def generate_sequences(sensorId, table, start=None, end=None, simulated=False, n_limit = None, df_to_csv = False):
     normal_sequence = pd.DataFrame()
-    anormal_sequence = pd.DataFrame()
+    test_sequence = pd.DataFrame()
     
+    if start!=None and end!=None:
+        frmt = '%d-%m-%Y %H:%M:%S'
+        start = datetime.datetime.strptime(start, frmt)
+        end = datetime.datetime.strptime(end, frmt)
+        
     if df_to_csv == True:
         init_path = os.path.dirname(os.getcwd())
         path = ""
@@ -413,13 +420,12 @@ def generate_sequences(sensorId, table, limit = True, df_to_csv = False):
             path =  init_path + "/wisdom/dataset/infraquinta/real/sensor_"+ str(sensorId) + ".csv"
         else:
             path = init_path + "\\dataset\\infraquinta\\real\\sensor_" + str(sensorId) + ".csv"
-        all_sequence = csv_to_df(sensorId, path, limit=limit)
-        normal_sequence = generate_normal(sensorId, limit = limit, n_limit=129600, df_to_csv = df_to_csv)
-        anormal_sequence = generate_anomalous(sensorId, limit=limit, df_to_csv = df_to_csv)
+               
+        normal_sequence = generate_normal(sensorId, start=start, end=end, simulated=simulated, n_limit=n_limit, df_to_csv=df_to_csv)
+        
     
     else:
-        all_sequence = create_dataset(table, sensorId, limit = limit)
-        normal_sequence = generate_normal(sensorId, limit = limit, n_limit=129600, df_to_csv = df_to_csv)
-        anormal_sequence = generate_anomalous(sensorId, limit=limit,df_to_csv = df_to_csv)
+        normal_sequence = generate_normal(sensorId, start=start, end=end,simulated=simulated, n_limit=n_limit, df_to_csv = df_to_csv)
+       
     
-    return all_sequence, normal_sequence, anormal_sequence
+    return normal_sequence, test_sequence
