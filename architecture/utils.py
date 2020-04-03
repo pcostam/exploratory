@@ -118,7 +118,7 @@ def generate_full(raw, timesteps, model="LSTM", n_seq=None, n_input=None, n_feat
     X_train_full = preprocess(X_train_full, timesteps, put="in", model=model, n_seq=n_seq, n_input=n_input, n_features=n_features)
     print("X_train_full shape>>>", X_train_full.shape)
     if model == "LSTM":
-        y_train_full = X_train_full
+        y_train_full = X_train_full[:, -1, :]
     else:
         y_train_full = generate_full_y_train(raw, n_input, timesteps, n_features)
     return X_train_full, y_train_full
@@ -160,6 +160,7 @@ def preprocess(raw, timesteps, put="in", model="LSTM", n_seq=None, n_input=None,
         
             return data
         elif put == "out":
+            print("n input", n_input)
             raw = raw.drop(['date'], axis=1)
             data = series_to_supervised(raw, n_in=n_input)
             print("data to supervised", data)
@@ -246,35 +247,29 @@ def generate_sets(raw, timesteps, type_input="LSTM", validation=True, n_seq=None
         
         print("type xtrain", type(X_train))
         print("type ytrain", type(y_train))
-        
-        return X_train, y_train
+        if validation == True:
+            return generate_validation(raw, timesteps, model="CNN", n_seq=n_seq, n_input=n_input, n_features=n_features)
+            
+        return X_train, y_train, None, None, None, None
     
     #LSTM input 3D
     if type_input == "LSTM":
         normal_sequence = raw
         print("normal_sequence", normal_sequence)
+        print("colunas", normal_sequence.shape[0])
     
         X_train_D = normal_sequence
     
-        size_X_train_D = X_train_D.shape[0]
-        size_train = round(size_X_train_D*0.8)
-        if validation == True:
-            X_train = X_train_D.iloc[:size_train, :]
-            X_val = X_train_D.iloc[size_train:, :]
-            
-            size_val = round(0.5*X_val.shape[0])
-       
-            X_val_1_D = X_val.iloc[:size_val, :]
-            X_val_2_D = X_val.iloc[size_val:, :]
         
-            X_train = preprocess(X_train_D, timesteps)
-            X_val_1 = preprocess(X_val_1_D, timesteps)
-            X_val_2 = preprocess(X_val_2_D, timesteps)
-    
-            return X_train, X_val_1, X_val_2
+        if validation == True:
+            return generate_validation(X_train_D, timesteps)
+            
         
         X_train = preprocess(X_train_D, timesteps)
-        return X_train, None, None
+        y_train = X_train[:,-1,:]
+        #y_train = X_train[:, -1]
+        
+        return X_train, y_train, None, None
 
 def split_features(n_features, X_train):
     input_data = list()
@@ -308,3 +303,34 @@ def generate_sets_days(normal_sequence, timesteps, validation=True):
     
         return X_train, X_val_1_D, X_val_2_D
     return X_train
+
+
+
+def generate_validation(X_train_D, timesteps, model="LSTM",  n_seq=None, n_input=None, n_features=None):
+     size_X_train_D = X_train_D.shape[0]
+     size_train = round(size_X_train_D*0.8)
+     
+     X_train = X_train_D.iloc[:size_train, :]
+     X_val = X_train_D.iloc[size_train:, :]
+            
+     size_val = round(0.5*X_val.shape[0])
+       
+     X_val_1_D = X_val.iloc[:size_val, :]
+     X_val_2_D = X_val.iloc[size_val:, :]
+     print("X_val_1 shape", X_val_1_D.shape)
+     print("X_val_2 shape", X_val_2_D.shape)
+    
+     X_train = preprocess(X_train_D, timesteps, model=model, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     X_val_1 = preprocess(X_val_1_D, timesteps, model=model, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     X_val_2 = preprocess(X_val_2_D, timesteps, model=model, n_seq=n_seq, n_input=n_input, n_features=n_features)
+            
+           
+     y_train = X_train[:,-1,:]
+     y_val_1 = X_val_1[:,-1,:]
+     y_val_2 = X_val_2[:, -1, :]
+     print("X_train shape", X_train.shape)
+     print("y_train shape", y_train.shape)
+     
+     return X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2
+            
+    

@@ -89,7 +89,7 @@ def fitness(num_lstm_layers, batch_size, learning_rate, drop_rate_1, drop_rate_2
     for df_chunk in normal_sequence:
         no_chunks += 1
         print("number of chunks:", no_chunks)
-        X_train, X_val_1, X_val_2 = utils.generate_sets(df_chunk, 96) 
+        X_train,_,  X_val_1, _, X_val_2,_ = utils.generate_sets(df_chunk, 96) 
         es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
         hist = model.fit(X_train, X_train, validation_data=(X_val_1, X_val_1), epochs=100, batch_size= batch_size, callbacks=[es])
     
@@ -187,7 +187,7 @@ def test_autoencoder(simulated = False, bayesian=False, save=True):
             model = load_model("best_autoencoderLSTM.h5")
         number_of_chunks += 1
         print("number of chunks:", number_of_chunks)
-        X_train, X_val_1, X_val_2 = utils.generate_sets(df_chunk, timesteps, validation=validation)  
+        X_train, _, X_val_1, _, X_val_2, _ = utils.generate_sets(df_chunk, timesteps, validation=validation)  
         es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         mc = ModelCheckpoint('best_autoencoderLSTM.h5', monitor='val_loss', mode='min', save_best_only=True)
         if validation:
@@ -231,7 +231,7 @@ def test_autoencoder(simulated = False, bayesian=False, save=True):
     plt.show()
         
     #calculate loss on the validation set to get miu and sigma values
-        
+    #should define an entire validation set and not only last set from chunk  
     X_pred = model.predict(X_val_1)
         
     vector = utils.get_error_vector(X_val_1, X_pred)

@@ -344,7 +344,7 @@ def do_train(architecture="multi-channel", bayesian=False, simulated=False, save
         #    model = load_model("best_autoencoderLSTM.h5")
         number_of_chunks += 1
         print("number of chunks:", number_of_chunks)
-        X_train, y_train = utils.generate_sets(df_chunk, timesteps, type_input="CNN",n_seq = n_seq,n_input=n_input,n_features=n_features)  
+        X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(df_chunk, timesteps, validation=False, type_input="CNN",n_seq = n_seq,n_input=n_input,n_features=n_features)  
         es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
         mc = ModelCheckpoint('best_autoencoderLSTM.h5', monitor='val_loss', mode='min', save_best_only=True)
         history = model.fit(X_train, y_train, epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
