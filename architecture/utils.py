@@ -10,6 +10,9 @@ import pandas as pd
 from preprocessing.series import create_data, series_to_supervised, generate_sequences, generate_normal
 import datetime
 from sklearn.preprocessing import MinMaxScaler
+import os
+import pickle
+from keras.models import load_model
 
 def get_mu(vector):
     return np.mean(vector, axis=0)
@@ -93,7 +96,7 @@ def concatenate_features(df_list_1, df_list_2):
         
     return list_result
 
-def generate_full(raw, timesteps, model="LSTM", n_seq=None, n_input=None, n_features=None):  
+def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, n_input=None, n_features=None):  
     X_train_full = list()
     size = len(raw)
     if size  > 1:
@@ -115,9 +118,9 @@ def generate_full(raw, timesteps, model="LSTM", n_seq=None, n_input=None, n_feat
     print("min date", type(min_date))
     print("type", X_train_full.dtypes)
 
-    X_train_full = preprocess(X_train_full, timesteps, put="in", model=model, n_seq=n_seq, n_input=n_input, n_features=n_features)
+    X_train_full = preprocess(X_train_full, timesteps, form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
     print("X_train_full shape>>>", X_train_full.shape)
-    if model == "LSTM":
+    if output_form == "3D":
         y_train_full = X_train_full[:, -1, :]
     else:
         y_train_full = generate_full_y_train(raw, n_input, timesteps, n_features)
@@ -125,77 +128,77 @@ def generate_full(raw, timesteps, model="LSTM", n_seq=None, n_input=None, n_feat
 
 
 
-def preprocess(raw, timesteps, put="in", model="LSTM", n_seq=None, n_input=None, n_features=None):
-    if model == "CNN":
-        if put == "in":
-            raw = raw.drop(['date'], axis = 1)
-            print("raw", raw)
-            print("raw columns", raw.columns)
-            print("raw index", raw.index)
+def preprocess(raw, timesteps, form="3D", n_seq=None, n_input=None, n_features=None):
+    if form == "4D":
+        raw = raw.drop(['date'], axis = 1)
+        print("raw", raw)
+        print("raw columns", raw.columns)
+        print("raw index", raw.index)
  
-            data = series_to_supervised(raw, n_in=n_input)
-            print("data shape 2", data.shape)
-            data = np.array(data.iloc[:, :n_input])
-            print("data shape 3", data.shape)
-            #normalize data
-            scaler = MinMaxScaler()
-            data = scaler.fit_transform(data)
-        
-            print("data", data)
-        
-        
-            #for CNN there is the need to reshape de 2-d np array to a 4-d np array [samples, timesteps, features]
-            #[batch_size, height, width, depth]
-            #[samples, subsequences, timesteps, features]
-            print("samples", data.shape[0])
-            print("subsequences", n_seq)
-            print("timesteps", timesteps)
-            print("features", n_features)
-        
-            rows = data.shape[0] * data.shape[1]
-            new_n_seq = round(rows/(data.shape[0]*timesteps*n_features))
+        data = series_to_supervised(raw, n_in=n_input)
+        print("data shape 2", data.shape)
+        data = np.array(data.iloc[:, :n_input])
+        print("data shape 3", data.shape)
+        #normalize data
+        scaler = MinMaxScaler()
+        data = scaler.fit_transform(data)
     
-            n_seq = new_n_seq
-            data = np.reshape(data, (data.shape[0], n_seq, timesteps, n_features))
+        print("data", data)
+    
+    
+        #for CNN there is the need to reshape de 2-d np array to a 4-d np array [samples, timesteps, features]
+        #[batch_size, height, width, depth]
+        #[samples, subsequences, timesteps, features]
+        print("samples", data.shape[0])
+        print("subsequences", n_seq)
+        print("timesteps", timesteps)
+        print("features", n_features)
+    
+        rows = data.shape[0] * data.shape[1]
+        new_n_seq = round(rows/(data.shape[0]*timesteps*n_features))
+
+        n_seq = new_n_seq
+        data = np.reshape(data, (data.shape[0], n_seq, timesteps, n_features))
+    
+        return data
+       
+    elif form == "2D":
+        print("n input", n_input)
+        raw = raw.drop(['date'], axis=1)
+        data = series_to_supervised(raw, n_in=n_input)
+        print("data to supervised", data)
+        data = data.values
+        print("data", type(data))
+        print("data", data)
+
+        if n_features == 1:
+            y_train = [data[:, -1]]
+        else:
+            y_train = data[:, :n_features]
+            print("y_train_full", y_train)
+
+        scaler = MinMaxScaler()
+        y_train = scaler.fit_transform(y_train)
+
+        y_train =  np.squeeze(y_train)
+    
+        return y_train
         
-            return data
-        elif put == "out":
-            print("n input", n_input)
-            raw = raw.drop(['date'], axis=1)
-            data = series_to_supervised(raw, n_in=n_input)
-            print("data to supervised", data)
-            data = data.values
-            print("data", type(data))
-            print("data", data)
-    
-            if n_features == 1:
-                y_train = [data[:, -1]]
-            else:
-                y_train = data[:, :n_features]
-                print("y_train_full", y_train)
-    
-            scaler = MinMaxScaler()
-            y_train = scaler.fit_transform(y_train)
-    
-            y_train =  np.squeeze(y_train)
-        
-            return y_train
-        
-    if model == "LSTM":
-        if put == "in" or put == "out":
-            raw = raw.drop(['date'], axis = 1)
-            data = np.array(raw['value'])
-            data = series_to_supervised(raw, n_in=timesteps)
-            data = np.array(data.iloc[:, :timesteps])
-    
-            #normalize data
-            scaler = MinMaxScaler()
-            data = scaler.fit_transform(data)
-    
-            #for lstm there is the need to reshape de 2-d np array to a 3-d np array [samples, timesteps, features]
-            data = data.reshape((data.shape[0], data.shape[1],1))
-    
-            return data
+   
+    elif form == "3D":
+        raw = raw.drop(['date'], axis = 1)
+        data = np.array(raw['value'])
+        data = series_to_supervised(raw, n_in=timesteps)
+        data = np.array(data.iloc[:, :timesteps])
+
+        #normalize data
+        scaler = MinMaxScaler()
+        data = scaler.fit_transform(data)
+
+        #for lstm there is the need to reshape de 2-d np array to a 3-d np array [samples, timesteps, features]
+        data = data.reshape((data.shape[0], data.shape[1],1))
+
+        return data
 
 
 def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
@@ -237,39 +240,25 @@ def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
     return y_train_full
 
 
-def generate_sets(raw, timesteps, type_input="LSTM", validation=True, n_seq=None, n_input=None, n_features=None):
-    #CNN input 4D
-    if type_input == "CNN": 
-        y_train = preprocess(raw, timesteps, put="out", model="CNN", n_input=n_input, n_features=n_features)
-        print("y_train shape", y_train.shape)
-       
-        X_train = preprocess(raw, timesteps, put="in", model="CNN", n_seq=n_seq, n_input=n_input, n_features=n_features)
-        
-        print("type xtrain", type(X_train))
-        print("type ytrain", type(y_train))
-        if validation == True:
-            return generate_validation(raw, timesteps, model="CNN", n_seq=n_seq, n_input=n_input, n_features=n_features)
-            
-        return X_train, y_train, None, None, None, None
-    
-    #LSTM input 3D
-    if type_input == "LSTM":
-        normal_sequence = raw
-        print("normal_sequence", normal_sequence)
-        print("colunas", normal_sequence.shape[0])
-    
-        X_train_D = normal_sequence
-    
-        
-        if validation == True:
-            return generate_validation(X_train_D, timesteps)
+def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None):       
+    print("generate_sets")
+    print("n_input", n_input)
+    print("validation generate_sets", validation)
+    if validation == True:
+        return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
             
         
-        X_train = preprocess(X_train_D, timesteps)
-        y_train = X_train[:,-1,:]
-        #y_train = X_train[:, -1]
+    X_train = preprocess(raw, timesteps, form = input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+    print("output form", output_form)
+    print("input form", input_form)
+    if output_form == "3D":
+        y_train = X_train
+    if output_form == "2D":
+        y_train = preprocess(raw, timesteps, form = output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+    #y_train = X_train[:, -1]
         
-        return X_train, y_train, None, None
+    return X_train, y_train, None, None, None, None
+    
 
 def split_features(n_features, X_train):
     input_data = list()
@@ -306,7 +295,10 @@ def generate_sets_days(normal_sequence, timesteps, validation=True):
 
 
 
-def generate_validation(X_train_D, timesteps, model="LSTM",  n_seq=None, n_input=None, n_features=None):
+def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None):
+     print("generate validation")
+     print("input form", input_form)
+     print("output form", output_form)
      size_X_train_D = X_train_D.shape[0]
      size_train = round(size_X_train_D*0.8)
      
@@ -320,17 +312,113 @@ def generate_validation(X_train_D, timesteps, model="LSTM",  n_seq=None, n_input
      print("X_val_1 shape", X_val_1_D.shape)
      print("X_val_2 shape", X_val_2_D.shape)
     
-     X_train = preprocess(X_train_D, timesteps, model=model, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     X_val_1 = preprocess(X_val_1_D, timesteps, model=model, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     X_val_2 = preprocess(X_val_2_D, timesteps, model=model, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     X_train = preprocess(X_train_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     X_val_1 = preprocess(X_val_1_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     X_val_2 = preprocess(X_val_2_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
             
-           
-     y_train = X_train[:,-1,:]
-     y_val_1 = X_val_1[:,-1,:]
-     y_val_2 = X_val_2[:, -1, :]
+     
+     y_train = preprocess(X_train_D, timesteps, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_val_1 = preprocess(X_val_1_D, timesteps, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_val_2 = preprocess(X_val_2_D, timesteps, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     
+
+        
      print("X_train shape", X_train.shape)
      print("y_train shape", y_train.shape)
      
      return X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2
+ 
+def save_parameters(mu, sigma, timesteps, min_th, filename):
+    param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'min_th':min_th}
+    filename = 'parameters' + filename + '.pickle'
+    path = os.path.join("..//gui_margarida//gui/assets", filename)
+    with open(path, 'wb') as f:  
+        pickle.dump(param, f, protocol=pickle.HIGHEST_PROTOCOL)
+    return True
+
+def load_parameters(filename):
+    global mu, sigma, timesteps, min_th
+    filename = 'parameters' + filename + '.pickle'
+    current_dir = os.getcwd()
+    print("current dir", current_dir)
+    path = ""
+    if current_dir == "F:\\manual\\Tese\exploratory\\wisdom\\architecture":
+        path = os.path.join("..//gui_margarida//gui//assets", filename)
+    else:
+        path = os.path.join(current_dir + '//assets//' + filename)
+    
+    # Getting back the objects:
+    with open(path, 'rb') as f:  
+        param = pickle.load(f)
+    
+    mu = param['mu']
+    sigma = param['sigma']
+    timesteps = param['timesteps']
+    min_th = param['min_th']
+    
+    return param
+
+def detect_anomalies(X_test, h5_filename, choose_th=None):
+    print("shape", X_test.shape)
+    param = load_parameters()
+
+    filename = h5_filename + '.h5'
+    current_dir = os.getcwd()
+    print("current dir", current_dir)
+    path = ""
+    if current_dir == "F:\\manual\\Tese\exploratory\\wisdom\\architecture":
+        path = os.path.join("..//gui_margarida//gui//assets", filename)
+    else:
+        path = os.path.join(current_dir + '//assets//' + filename)
+        
+    model = load_model(path) 
+    
+    mu = param['mu']
+    sigma = param['sigma']
+    timesteps = param['timesteps']
+    print("mu", mu)
+    print("sigma", sigma)
+    print("timesteps", timesteps)
+    
+    anomalies_th = param['min_th']
+    if choose_th != None:
+        anomalies_th = choose_th
+        
+    print("treshold", anomalies_th)
+    
+    Xtest = preprocess(X_test, timesteps)
+    print("Xtest shape", Xtest.shape)
+    print("Xtest type", type(Xtest))
+    
+    print("Predict")
+    X_pred = model.predict(Xtest)
+
+    predict = pd.DataFrame()
+    
+    vector = get_error_vector(Xtest, X_pred)
+    vector = np.squeeze(vector)
+        
+    score = anomaly_score(mu, sigma, vector)
+    
+    values = list()
+    dates = list()
+    anomalies = 0
+    i = 0
+    for sc in score:
+        if sc > anomalies_th:
+             anomalies += 1
+             value = X_test['value'].iloc[i]
+             date = X_test['date'].iloc[i]
+             dates.append(date)
+             values.append(value)
+        i += 1
+        
+    print("no. anomalies", anomalies)
+    print("predict", predict)
+    
+    predict['value'] = values
+    predict['date'] = dates
+    return predict
+
             
     
