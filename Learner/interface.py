@@ -17,7 +17,7 @@ def operation(data, method, start_date, end_date, granularity, anomaly_threshold
     #Model
     if method == "LSTM autoencoders":
         print("Operation LSTM autoencoder")
-        return autoencoder.operation(data, anomaly_threshold)
+        return autoencoder.autoencoderLSTM.operation(data, anomaly_threshold)
     #elif method == "CNN-LSTM":
     #elif method == "CNN-Bi-LSTM":
     #elif method == "stacked Bi-LSTM":
