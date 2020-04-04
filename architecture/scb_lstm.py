@@ -26,13 +26,15 @@ from skopt.space import Integer, Real
 
 import tuning
 class SCB_LSTM(EncDec):
-    config = [2,
+    toIndex = dict()
+    default_parameters =[2,
         2,
         2,
         2,
         2,
         0.1,
-        20]   
+        20,
+        128]
     n_seq = 2
     n_input = n_seq * EncDec.n_steps
     input_form = "4D"
@@ -40,8 +42,8 @@ class SCB_LSTM(EncDec):
     
     def model(X_train, y_train, config):
         
-        toIndex = EncDec.toIndex 
-        n_steps = EncDec.n_steps
+        toIndex = SCB_LSTM.toIndex 
+        n_steps = SCB_LSTM.n_steps
         n_features = X_train.shape[3]
             
         num_cnn_layers = tuning.get_param(config, toIndex, "num_cnn_layers")
@@ -87,8 +89,9 @@ class SCB_LSTM(EncDec):
         return model
     
     type_model_func = model
-        
-    def hyperparam_opt():
+     
+    @classmethod
+    def hyperparam_opt(cls):
         num_cnn_layers = Integer(low=0, high=20, name='num_cnn_layers')
         num_filters_encoder= Integer(low=0, high=5, name='num_filters_encoder')
         num_filters_decoder = Integer(low=0, high=5, name='num_filters_decoder')
@@ -115,16 +118,16 @@ class SCB_LSTM(EncDec):
         20,
         128] 
         
-        EncDec.dimensions = dimensions
-        EncDec.default_parameters = default_parameters
-     
+        cls.dimensions = dimensions
+        cls.default_parameters = default_parameters
+        cls.config = cls.default_parameters
         
         for i in range(0, len(dimensions)):
-             EncDec.toIndex[dimensions[i].name] = i
+             cls.toIndex[dimensions[i].name] = i
     
           
-    hyperparam_opt()
-    print("dimensions>>>", EncDec.toIndex)
+SCB_LSTM.hyperparam_opt()
+print("dimensions>>>", SCB_LSTM.toIndex)
         
 
     

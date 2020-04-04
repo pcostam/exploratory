@@ -97,11 +97,11 @@ class EncDec(object):
                     model = load_model(best_h5_filename)
                 number_of_chunks += 1
                 print("number of chunks:", number_of_chunks)
-                X_train, y_train, X_val_1, _, X_val_2, _ = utils.generate_sets(df_chunk, timesteps,input_form = cls.input_form, output_form = cls.output_form, validation=validation, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)  
+                X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(df_chunk, timesteps,input_form = cls.input_form, output_form = cls.output_form, validation=validation, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)  
                 es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
                 mc = ModelCheckpoint(best_h5_filename, monitor='val_loss', mode='min', save_best_only=True)
                 if validation:
-                    history = model.fit(X_train, y_train, validation_data=(X_val_1, X_val_1), epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
+                    history = model.fit(X_train, y_train, validation_data=(X_val_1, y_val_1), epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
                 else:
                     history = model.fit(X_train, y_train, epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
                 is_best_model = True

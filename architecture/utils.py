@@ -246,8 +246,7 @@ def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validatio
     print("validation generate_sets", validation)
     if validation == True:
         return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-            
-        
+               
     X_train = preprocess(raw, timesteps, form = input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
     print("output form", output_form)
     print("input form", input_form)
@@ -255,8 +254,7 @@ def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validatio
         y_train = X_train
     if output_form == "2D":
         y_train = preprocess(raw, timesteps, form = output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-    #y_train = X_train[:, -1]
-        
+    
     return X_train, y_train, None, None, None, None
     
 
@@ -311,6 +309,7 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
      X_val_2_D = X_val.iloc[size_val:, :]
      print("X_val_1 shape", X_val_1_D.shape)
      print("X_val_2 shape", X_val_2_D.shape)
+     print("X_train_D", X_train_D.shape)
     
      X_train = preprocess(X_train_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      X_val_1 = preprocess(X_val_1_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)

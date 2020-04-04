@@ -21,7 +21,7 @@ def training(type_model="all", timesteps=96, simulated = False, bayesian=False, 
          CNN_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=False)
         
     elif type_model == "CNN-BiLSTM":
-         CNN_BiLSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=False)
+         CNN_BiLSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=True)
     
     elif type_model == "SCB-LSTM":
           SCB_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=False)
