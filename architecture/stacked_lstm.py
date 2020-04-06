@@ -41,6 +41,8 @@ class stacked_LSTM(Baseline):
     num_lstm_layers = 2
     learning_rate = 0.01
     batch_size = 128
+    n_seq = None
+    n_input = Baseline.n_steps
    
     
     def stacked_lstm_model(X, num_lstm_layers, learning_rate):
@@ -62,6 +64,30 @@ class stacked_LSTM(Baseline):
     
     type_model_func = stacked_lstm_model
     
+    @classmethod
+    def hyperparam_opt(cls):
+         
+      
+        num_lstm_layers = Integer(low=0, high=5, name='num_lstm_layers') 
+        learning_rate = Real(low=1e-4, high=1e-2, prior='log-uniform', name='learning_rate')
+        dim_batch_size = Integer(low=64, high=128, name='batch_size')
+        dimensions = [num_lstm_layers,
+        learning_rate,
+        dim_batch_size] 
+        
+        default_parameters =[2,
+        0.01,
+        128] 
+        
+        cls.dimensions = dimensions
+        cls.default_parameters = default_parameters
+        cls.config = cls.default_parameters
+        
+        for i in range(0, len(dimensions)):
+             cls.toIndex[dimensions[i].name] = i
+    
+stacked_LSTM.hyperparam_opt()  
+"""
     def test():
         stime ="01-01-2017 00:00:00"
         etime ="01-03-2017 00:00:00"
@@ -108,5 +134,6 @@ class stacked_LSTM(Baseline):
         #X_pred = model.predict(X_val_1)
         
         #print("X_pred", X_pred)
+    """
           
           

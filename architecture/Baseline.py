@@ -11,10 +11,14 @@ from keras.backend import clear_session
 from keras.models import load_model
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 import os
+import numpy as np
 class Baseline(object):
     type_model_func = None
     type_model = ""
     n_steps = 3
+    n_features = 1
+    n_input = 1
+    toIndex = dict()
     
     @classmethod
     def do_train(cls, timesteps=3, simulated = False, bayesian=False, save=True, validation=True):
@@ -70,6 +74,11 @@ class Baseline(object):
             path = os.path.join("..//gui_margarida//gui//assets", filename)
             model.save(path)
             print("Saved model to disk")
+            
+            X_test = np.array([0.2, 0.5, 0.67])
+            X_test = X_test.reshape((1, cls.n_steps, cls.n_features))
+            X_pred = model.predict(X_test)
+        
             
 
             return True

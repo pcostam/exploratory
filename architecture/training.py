@@ -9,6 +9,7 @@ from architecture.autoencoder import autoencoderLSTM
 from architecture.cnn_lstm import CNN_LSTM
 from architecture.cnn_biLSTM import CNN_BiLSTM
 from architecture.scb_lstm import SCB_LSTM
+from architecture.stacked_lstm import stacked_LSTM
 models = ["autoencoder LSTM", "CNN-BiLSTM", "CNN-LSTM", "SCB-LSTM", "stacked BiLSTM", "stacked LSTM"]
 def training(type_model="all", timesteps=96, simulated = False, bayesian=False, save=True, validation=True):
     if type_model == "all":
@@ -25,3 +26,7 @@ def training(type_model="all", timesteps=96, simulated = False, bayesian=False, 
     
     elif type_model == "SCB-LSTM":
           SCB_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=False)
+          
+    elif type_model == "stacked LSTM":
+          stacked_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=False)
+        

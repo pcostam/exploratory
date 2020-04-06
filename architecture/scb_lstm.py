@@ -127,7 +127,6 @@ class SCB_LSTM(EncDec):
     
           
 SCB_LSTM.hyperparam_opt()
-print("dimensions>>>", SCB_LSTM.toIndex)
         
 
     
