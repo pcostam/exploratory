@@ -54,6 +54,7 @@ class Baseline(object):
                 validation = False
                 
             print("type_model_func", cls.type_model_func)
+            print("config", cls.config)
             model = cls.type_model_func(X_train_full, y_train_full, config)
             best_h5_filename = "best_" + cls.h5_file_name + ".h5"
             for df_chunk in normal_sequence:

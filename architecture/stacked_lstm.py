@@ -34,8 +34,10 @@ import pickle
 import os
 import utils
 from Baseline import Baseline
+import tuning
 
 class stacked_LSTM(Baseline):
+    toIndex = dict()
     input_form = "3D"
     output_form = "2D"
     num_lstm_layers = 2
@@ -43,9 +45,14 @@ class stacked_LSTM(Baseline):
     batch_size = 128
     n_seq = None
     n_input = Baseline.n_steps
+    config = []
    
     
-    def stacked_lstm_model(X, num_lstm_layers, learning_rate):
+    def stacked_lstm_model(X, y, config):
+        toIndex = stacked_LSTM.toIndex 
+        num_lstm_layers = tuning.get_param(config, toIndex, "num_lstm_layers")
+        learning_rate = tuning.get_param(config, toIndex, "learning_rate")
+        
         n_steps = X.shape[1]
         n_features = X.shape[2]
         model = Sequential()
