@@ -29,14 +29,10 @@ def get_sigma(vector, mu):
      return sigma
     
 #https://scipy-lectures.org/intro/numpy/operations.html
-def get_error_vector(X_val, X_pred):
-    X_pred =  np.squeeze(X_pred)
-    X_pred = X_pred[:,0]
-    X_pred = X_pred.reshape(X_pred.shape[0],1)
-        
-    Xval =  np.squeeze(X_val)
-    Xval = X_val[:,0]
-    Xval = Xval.reshape(Xval.shape[0],1)
+def get_error_vector(X_val, X_pred): 
+    Xval = process_predict(X_val)
+    X_pred = process_predict(X_pred)     
+  
     x_input = Xval
     x_output = X_pred
     
@@ -71,6 +67,13 @@ def get_threshold(X_val_2_D, score):
     min_th = thresholds[index_min]
     return min_th
 
+def process_predict(X_pred):
+    if len(X_pred.shape) == 3:
+        X_pred = np.squeeze(X_pred)
+        X_pred = X_pred[:,0]
+        X_pred = X_pred.reshape(X_pred.shape[0], 1)
+     
+    return X_pred
 def plot_training_losses(history):
     fig, ax = plt.subplots(figsize=(14,6), dpi=80)
     ax.plot(history['loss'], 'b', label='Train', linewidth=2)
@@ -154,7 +157,30 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
        
     elif form == "2D":
         print("input_data shape", input_data.shape)
-        y_train = input_data[:, -1, :]
+        print("len input_data", len(input_data.shape))
+        if len(input_data.shape) == 3:
+            y_train = input_data[:, -1, :]
+        else:
+            print("2D OTHER")
+            raw = raw.drop(['date'], axis=1)
+            data = series_to_supervised(raw, n_in=n_input)
+            print("data to supervised", data)
+            data = data.values
+            print("data", type(data))
+            print("data", data)
+
+            if n_features == 1:
+                y_train = [data[:, -1]]
+            else:
+                y_train = data[:, :n_features]
+                print("y_train_full", y_train)
+
+            scaler = MinMaxScaler()
+            y_train = scaler.fit_transform(y_train)
+
+            y_train =  np.squeeze(y_train)
+            y_train = np.reshape(y_train, (y_train.shape[0], n_features))
+            print("Y_TRAIN 2D SHAPE", y_train.shape)
         return y_train
     
     elif form == "3D":
@@ -290,9 +316,9 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
      X_val_2 = preprocess(X_val_2_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
             
      
-     y_train = preprocess(X_train_D, timesteps, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     y_val_1 = preprocess(X_val_1_D, timesteps, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     y_val_2 = preprocess(X_val_2_D, timesteps, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_train = preprocess(X_train_D, timesteps, input_data = X_train, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_val_1 = preprocess(X_val_1_D, timesteps, input_data = X_val_1, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_val_2 = preprocess(X_val_2_D, timesteps, input_data = X_val_2, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      
 
         

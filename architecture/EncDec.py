@@ -114,26 +114,24 @@ class EncDec(object):
             model = load_model(path)
             print("Loaded model")
                 
-            if validation == False:
+            if validation == True:
                 utils.plot_training_losses(history)
             X_pred = model.predict(X_train_full)
-            print("shape pred:", X_pred.shape)
-            print(X_pred)
-                
-                
-            X_pred = np.squeeze(X_pred)
-            X_pred = X_pred[:,0]
-            X_pred = X_pred.reshape(X_pred.shape[0], 1)
-            print("shape pred:", X_pred.shape)
-            
+            X_pred = utils.process_predict(X_pred)
             X_pred = pd.DataFrame(X_pred)
-                
             scored = pd.DataFrame(index=X_pred.index)
             
-            Xtrain =  np.squeeze(X_train)
-            Xtrain = Xtrain[:,0]
-            Xtrain = Xtrain.reshape(Xtrain.shape[0],1)
+            if len(X_train.shape)==3:
+                Xtrain =  np.squeeze(X_train)
+                Xtrain = Xtrain[:,0]
+                Xtrain = Xtrain.reshape(Xtrain.shape[0],1)
+          
+            else:
+                print("do another")
+                Xtrain = y_train
             print("shape train:", X_train.shape)
+            print("new shape train", Xtrain.shape)
+            
             scored['Loss_mae'] = np.mean(np.abs(X_pred-Xtrain), axis = 1)
             plt.figure(figsize=(16,9), dpi=80)
             plt.title('Loss Distribution', fontsize=16)
@@ -143,7 +141,7 @@ class EncDec(object):
             #calculate loss on the validation set to get miu and sigma values
             #should define an entire validation set and not only last set from chunk  
             X_pred = model.predict(X_val_1)
-                
+            
             vector = utils.get_error_vector(X_val_1, X_pred)
             vector = np.squeeze(vector)    
             plt.hist(list(vector), bins=20)

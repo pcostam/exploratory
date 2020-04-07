@@ -53,7 +53,7 @@ from EncDec import EncDec
 
 class CNN_LSTM(EncDec):
     config =  [1, 1, 20, 1, 2, 128, 1e-2, 0.5, 0.5]
-    n_seq = 10
+    n_seq = 5
     n_input = n_seq * EncDec.n_steps
     input_form = "4D"
     output_form = "2D"
