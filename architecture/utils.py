@@ -128,32 +128,22 @@ def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, 
 
 
 
-def preprocess(raw, timesteps, form="3D", n_seq=None, n_input=None, n_features=None):
+def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None):
+    print("preprocess")
+    print("form 1", form)
+    print("input_data shape", input_data.shape)
     if form == "4D":
         raw = raw.drop(['date'], axis = 1)
-        print("raw", raw)
-        print("raw columns", raw.columns)
-        print("raw index", raw.index)
- 
         data = series_to_supervised(raw, n_in=n_input)
-        print("data shape 2", data.shape)
         data = np.array(data.iloc[:, :n_input])
-        print("data shape 3", data.shape)
+     
         #normalize data
         scaler = MinMaxScaler()
         data = scaler.fit_transform(data)
-    
-        print("data", data)
-    
-    
+
         #for CNN there is the need to reshape de 2-d np array to a 4-d np array [samples, timesteps, features]
         #[batch_size, height, width, depth]
         #[samples, subsequences, timesteps, features]
-        print("samples", data.shape[0])
-        print("subsequences", n_seq)
-        print("timesteps", timesteps)
-        print("features", n_features)
-    
         rows = data.shape[0] * data.shape[1]
         new_n_seq = round(rows/(data.shape[0]*timesteps*n_features))
 
@@ -163,31 +153,13 @@ def preprocess(raw, timesteps, form="3D", n_seq=None, n_input=None, n_features=N
         return data
        
     elif form == "2D":
-        print("n input", n_input)
-        raw = raw.drop(['date'], axis=1)
-        data = series_to_supervised(raw, n_in=n_input)
-        print("data to supervised", data)
-        data = data.values
-        print("data", type(data))
-        print("data", data)
-
-        if n_features == 1:
-            y_train = [data[:, -1]]
-        else:
-            y_train = data[:, :n_features]
-            print("y_train_full", y_train)
-
-        scaler = MinMaxScaler()
-        y_train = scaler.fit_transform(y_train)
-
-        y_train =  np.squeeze(y_train)
-    
+        print("input_data shape", input_data.shape)
+        y_train = input_data[:, -1, :]
         return y_train
-        
-   
+    
     elif form == "3D":
         raw = raw.drop(['date'], axis = 1)
-        data = np.array(raw['value'])
+        #data = np.array(raw['value'])
         data = series_to_supervised(raw, n_in=timesteps)
         data = np.array(data.iloc[:, :timesteps])
 
@@ -243,18 +215,20 @@ def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
 def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None):       
     print("generate_sets")
     print("n_input", n_input)
+    print("output_form", output_form)
+    print("input_form", input_form)
     print("validation generate_sets", validation)
     if validation == True:
         return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
                
     X_train = preprocess(raw, timesteps, form = input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-    print("output form", output_form)
-    print("input form", input_form)
+  
     if output_form == "3D":
         y_train = X_train
     if output_form == "2D":
-        y_train = preprocess(raw, timesteps, form = output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-    
+        y_train = preprocess(raw, timesteps, form = output_form, input_data = X_train, n_seq=n_seq, n_input=n_input, n_features=n_features)
+    print("y_train shape", y_train.shape)
+    print("X_train shape", X_train.shape)
     return X_train, y_train, None, None, None, None
     
 

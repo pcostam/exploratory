@@ -46,6 +46,7 @@ class stacked_LSTM(Baseline):
     n_seq = None
     n_input = Baseline.n_steps
     config = []
+    h5_file_name = "stackedLSTM"
    
     
     def stacked_lstm_model(X, y, config):
