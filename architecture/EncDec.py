@@ -116,23 +116,21 @@ class EncDec(object):
                 
             if validation == True:
                 utils.plot_training_losses(history)
-            X_pred = model.predict(X_train_full)
-            X_pred = utils.process_predict(X_pred)
-            X_pred = pd.DataFrame(X_pred)
-            scored = pd.DataFrame(index=X_pred.index)
+                
+            y_pred = model.predict(X_train_full)
+            y_pred = utils.process_predict(y_pred)
+            y_pred = pd.DataFrame(y_pred)
+            scored = pd.DataFrame(index=y_pred.index)
             
-            if len(X_train.shape)==3:
-                Xtrain =  np.squeeze(X_train)
-                Xtrain = Xtrain[:,0]
-                Xtrain = Xtrain.reshape(Xtrain.shape[0],1)
+            if len(y_train.shape)==3:
+                ytrain =  np.squeeze(y_train)
+                ytrain = ytrain[:,0]
+                ytrain = ytrain.reshape(ytrain.shape[0],1)
           
             else:
-                print("do another")
-                Xtrain = y_train
-            print("shape train:", X_train.shape)
-            print("new shape train", Xtrain.shape)
-            
-            scored['Loss_mae'] = np.mean(np.abs(X_pred-Xtrain), axis = 1)
+                ytrain = y_train
+                  
+            scored['Loss_mae'] = np.mean(np.abs(y_pred-ytrain), axis = 1)
             plt.figure(figsize=(16,9), dpi=80)
             plt.title('Loss Distribution', fontsize=16)
             sns.distplot(scored['Loss_mae'], bins=20, kde=True, color='blue')
@@ -140,24 +138,25 @@ class EncDec(object):
                 
             #calculate loss on the validation set to get miu and sigma values
             #should define an entire validation set and not only last set from chunk  
-            X_pred = model.predict(X_val_1)
+            y_pred = model.predict(X_val_1)
             
-            vector = utils.get_error_vector(X_val_1, X_pred)
+            vector = utils.get_error_vector(y_val_1, y_pred)
             vector = np.squeeze(vector)    
             plt.hist(list(vector), bins=20)
             plt.show()
                 
             vector = vector.reshape(vector.shape[0], 1)
             print("vector shape", vector.shape)
-            print(vector)
+            print("vector", vector)
                 
             mu = utils.get_mu(vector)
+            print("mu", mu)
             sigma = utils.get_sigma(vector, mu)
-                
+            print("sigma", sigma)
             score = utils.anomaly_score(mu, sigma, vector)
          
-            X_pred = model.predict(X_val_2) 
-            vector = utils.get_error_vector(X_val_2, X_pred)
+            y_pred = model.predict(y_val_2) 
+            vector = utils.get_error_vector(y_val_2, y_pred)
             
             vector = utils.np.squeeze(vector)
             score = utils.anomaly_score(mu, sigma, vector)
