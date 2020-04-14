@@ -46,6 +46,8 @@ class autoencoderLSTM(EncDec):
         num_lstm_layers =  tuning.get_param(config, toIndex, "num_lstm_layers")
         learning_rate = tuning.get_param(config, toIndex, "learning_rate") 
         drop_rate_1 =  tuning.get_param(config, toIndex, "drop_rate_1")
+        print("config", config)
+        print("toIndex", toIndex)
         drop_rate_2 =  tuning.get_param(config, toIndex, "drop_rate_2")
               
         
@@ -111,23 +113,22 @@ class autoencoderLSTM(EncDec):
         print("drop rate 1:", drop_rate_1)
         print("drop rate 2:", drop_rate_2)
     
-        _, normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp", limit=True, df_to_csv=True)
-    
-   
-        normal_sequence = generate_normal("12", limit=True, n_limit=129600, df_to_csv = True)
-        X_train_full, _ = utils.generate_full(normal_sequence, 96, input_form=autoencoderLSTM.get_input_form(), output_form=autoencoderLSTM.get_output_form())
+        normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp", df_to_csv=True, start=EncDec.stime, end=EncDec.etime)
+        print("stime", autoencoderLSTM.stime)
+        print("etime", autoencoderLSTM.etime)
+        X_train_full, _ = utils.generate_full(normal_sequence,autoencoderLSTM.n_steps, input_form=autoencoderLSTM.input_form, output_form=autoencoderLSTM.output_form, n_seq=autoencoderLSTM.n_seq,n_input=autoencoderLSTM.n_input, n_features=autoencoderLSTM.n_features)
         
-        config = [num_lstm_layers, learning_rate,  drop_rate_1, drop_rate_2]
-        model = EncDec.type_model_func(X_train_full, X_train_full, config)
+        config = [num_lstm_layers, batch_size, learning_rate,  drop_rate_1, drop_rate_2]
+        model = autoencoderLSTM.type_model_func(X_train_full, X_train_full, config)
     
         print("total number of chunks", len(normal_sequence))
         no_chunks = 0
         for df_chunk in normal_sequence:
             no_chunks += 1
             print("number of chunks:", no_chunks)
-            X_train,_,  X_val_1, _, X_val_2,_ = utils.generate_sets(df_chunk, 96, input_form=autoencoderLSTM.get_input_form(), output_form=autoencoderLSTM.get_output_form()) 
+            X_train, y_train,  X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(df_chunk, 96, input_form=autoencoderLSTM.get_input_form(), output_form=autoencoderLSTM.get_output_form()) 
             es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
-            hist = model.fit(X_train, X_train, validation_data=(X_val_1, X_val_1), epochs=100, batch_size= batch_size, callbacks=[es])
+            hist = model.fit(X_train, X_train, validation_data=(X_val_1, y_val_1), epochs=100, batch_size= batch_size, callbacks=[es])
             
             loss = hist.history['loss'][-1]
     
@@ -146,7 +147,6 @@ class autoencoderLSTM(EncDec):
 
     mu = 0
     sigma = 0
-    timesteps = 0
     min_th = 0
     h5_file_name = "autoencoderLSTM"
     fitness_func = fitness

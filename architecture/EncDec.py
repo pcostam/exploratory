@@ -18,12 +18,6 @@ import pandas as pd
 from sklearn.model_selection import train_test_split
 from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import load_model
-import skopt
-from skopt import gp_minimize
-from skopt.space import Integer, Real
-from skopt.utils import use_named_args
-from skopt.callbacks import DeltaYStopper
-import tensorflow
 from keras.backend import clear_session
 from keras import regularizers
 import datetime
@@ -51,7 +45,8 @@ class EncDec(object):
     n_steps = 96
     n_seq = None
     n_input = None
-    
+    stime = "01-01-2017 00:00:00"
+    etime = "01-12-2017 00:00:00"
         
         
     @classmethod
@@ -63,11 +58,11 @@ class EncDec(object):
             mu = cls.mu
             sigma = cls.sigma
             
-            stime ="01-01-2017 00:00:00"
-            etime ="01-03-2017 00:00:00"
+            stime =cls.stime
+            etime = cls.etime
         
             normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp",start=stime, end=etime, simulated=simulated, df_to_csv=True)
-            print("test normal_sequence", normal_sequence[0].shape)
+          
             config = cls.config
             if bayesian == True:
                 fitness = cls.fitness_func
@@ -139,6 +134,9 @@ class EncDec(object):
             #calculate loss on the validation set to get miu and sigma values
             #should define an entire validation set and not only last set from chunk  
             y_pred = model.predict(X_val_1)
+            
+         
+            
             
             vector = utils.get_error_vector(y_val_1, y_pred)
             vector = np.squeeze(vector)    
