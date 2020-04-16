@@ -85,6 +85,7 @@ class EncDec(object):
                 validation = False
                 
             print("type_model_func", cls.type_model_func)
+            print("batch_size", batch_size)
             model = cls.type_model_func(X_train_full, y_train_full, config)
             best_h5_filename = "best_" + cls.h5_file_name + ".h5"
             for df_chunk in normal_sequence:
@@ -119,18 +120,19 @@ class EncDec(object):
             
             if len(y_train.shape)==3:
                 ytrain =  np.squeeze(y_train)
-                ytrain = ytrain[:,0]
+                ytrain = ytrain[:,-1]
                 ytrain = ytrain.reshape(ytrain.shape[0],1)
           
             else:
                 ytrain = y_train
                   
+            
             scored['Loss_mae'] = np.mean(np.abs(y_pred-ytrain), axis = 1)
             plt.figure(figsize=(16,9), dpi=80)
             plt.title('Loss Distribution', fontsize=16)
             sns.distplot(scored['Loss_mae'], bins=20, kde=True, color='blue')
             plt.show()
-                
+              
             #calculate loss on the validation set to get miu and sigma values
             #should define an entire validation set and not only last set from chunk  
             y_pred = model.predict(X_val_1)
@@ -155,7 +157,7 @@ class EncDec(object):
          
             y_pred = model.predict(y_val_2) 
             vector = utils.get_error_vector(y_val_2, y_pred)
-            
+            print("y_val_2", y_val_2.shape)
             vector = utils.np.squeeze(vector)
             score = utils.anomaly_score(mu, sigma, vector)
             
@@ -163,6 +165,8 @@ class EncDec(object):
          
             _, _, X_val_2_D = utils.generate_sets_days(normal_sequence_full, timesteps)
             
+            print("x_val_2_D shape", X_val_2_D.shape)
+            print("score", len(score))
             min_th = utils.get_threshold(X_val_2_D, score)
         
             dates_list = list()
@@ -195,3 +199,6 @@ class EncDec(object):
     def operation(data, anomaly_threshold):
             prediction = utils.detect_anomalies(data, EncDec.h5_file_name)
             return prediction
+
+    def do_test():
+        return True

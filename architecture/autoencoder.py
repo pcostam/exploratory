@@ -19,7 +19,7 @@ from architecture import utils
 from architecture.EncDec import EncDec
 from preprocessing.series import generate_sequences, generate_normal
 from keras.callbacks import EarlyStopping
-import tuning
+from architecture import tuning
 #see https://towardsdatascience.com/lstm-autoencoder-for-anomaly-detection-e1f4f2ee7ccf
 #https://towardsdatascience.com/lstm-autoencoder-for-extreme-rare-event-classification-in-keras-ce209a224cfb
 #see https://medium.com/@crawftv/parameter-hyperparameter-tuning-with-bayesian-optimization-7acf42d348e1
@@ -32,7 +32,7 @@ import tuning
 class autoencoderLSTM(EncDec):
     input_form = "3D"
     output_form = "3D"
-    config = [2, 128, 1e-2, 0.5, 0.5]
+    config = []
     print("testing class")
     @classmethod
     def get_input_form(cls):
@@ -42,38 +42,50 @@ class autoencoderLSTM(EncDec):
         return cls.output_form
     
     def autoencoder(X, y, config): 
+        print("config", config)
+        print("toIndex", EncDec.toIndex)
         toIndex = EncDec.toIndex
         num_lstm_layers =  tuning.get_param(config, toIndex, "num_lstm_layers")
+        num_lstm_layers_compress = tuning.get_param(config, toIndex, "num_lstm_layers_compress")
         learning_rate = tuning.get_param(config, toIndex, "learning_rate") 
         drop_rate_1 =  tuning.get_param(config, toIndex, "drop_rate_1")
-        print("config", config)
-        print("toIndex", toIndex)
+     
         drop_rate_2 =  tuning.get_param(config, toIndex, "drop_rate_2")
               
         
         print("X", X)
-        timesteps = X.shape[1]
-        n_features = X.shape[2]
+        timesteps = EncDec.n_steps
+        n_features = EncDec.n_features
         model = Sequential()
         # Encoder  
-        model.add(LSTM(32, activation='relu', input_shape=(timesteps, n_features), return_sequences=True, kernel_regularizer=regularizers.l2(0.01), recurrent_regularizer=regularizers.l2(0.01), bias_regularizer=regularizers.l2(0.01)))
+        model.add(LSTM(64, activation='relu', 
+                       input_shape=(timesteps, n_features), 
+                       return_sequences=True))
         for i in range(num_lstm_layers):
             name = 'layer_lstm_encoder_{0}'.format(i+1)
-            model.add(LSTM(32, activation='relu', return_sequences=True, name=name))      
-        model.add(LSTM(16, activation='relu',return_sequences=False))
+            model.add(LSTM(64, activation='relu', return_sequences=True, 
+                           name=name)) 
+            
+        model.add(LSTM(32, activation='relu',return_sequences=False))
+        for i in range(num_lstm_layers_compress):
+               model.add(LSTM(32, activation='relu',return_sequences=False))
         model.add(Dropout(rate=drop_rate_1))
         model.add(RepeatVector(timesteps))
         # Decoder
-        model.add(LSTM(16, activation='relu', return_sequences=True ))
+        model.add(LSTM(32, activation='relu', return_sequences=True))
+        for i in range(num_lstm_layers_compress):
+            name = 'layer_lstm_decoder_compress_{0}'.format(i+1)
+            model.add(LSTM(32, activation='relu', return_sequences=True, name=name))
         for i in range(num_lstm_layers):
-            name = 'layer_lstm_decoder_{0}'.format(i+1)
-            model.add(LSTM(16, activation='relu', return_sequences=True, name=name))
-        model.add(LSTM(32, activation='relu', return_sequences=True)) 
+             model.add(LSTM(64, activation='relu', 
+                            return_sequences=True)) 
+            
+        model.add(LSTM(64, activation='relu', return_sequences=True)) 
         model.add(Dropout(rate=drop_rate_2))
         model.add(TimeDistributed(Dense(n_features)))
      
         adam = Adam(lr=learning_rate)
-        model.compile(optimizer=adam, loss='mae',  metrics=['accuracy'])
+        model.compile(optimizer=adam, loss='mae')
         model.summary()
         
         return model
@@ -84,6 +96,7 @@ class autoencoderLSTM(EncDec):
     
     def hyperparam_opt():
         dim_num_lstm_layers = Integer(low=0, high=20, name='num_lstm_layers')
+        dim_num_lstm_layers_compress = Integer(low=0, high=20, name="num_lstm_layers_compress")
         dim_batch_size = Integer(low=64, high=128, name='batch_size')
         #dim_adam_decay = Real(low=1e-6,high=1e-2,name="adam_decay")
         dim_learning_rate = Real(low=1e-4, high=1e-2, prior='log-uniform', name='learning_rate')
@@ -93,16 +106,20 @@ class autoencoderLSTM(EncDec):
                       dim_batch_size,
                       dim_learning_rate,
                       dim_drop_rate_1,
-                      dim_drop_rate_2]
+                      dim_drop_rate_2,
+                      dim_num_lstm_layers_compress]
         
-        default_parameters = [2, 128, 1e-2, 0.5, 0.5]
+        default_parameters = [0, 128, 1e-2, 0.5, 0.5, 0]
         
         for i in range(0, len(dimensions)):
              EncDec.toIndex[dimensions[i].name] = i
-    
+        
         return dimensions,  default_parameters
     
     dimensions,  default_parameters = hyperparam_opt()
+    config = default_parameters
+    #regularized?
+    #config += [True]
     @use_named_args(dimensions=dimensions)
     def fitness(num_lstm_layers, batch_size, learning_rate, drop_rate_1, drop_rate_2):  
         init = time.perf_counter()

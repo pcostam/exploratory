@@ -20,15 +20,15 @@ def training(type_model="all", timesteps=96, simulated = False, bayesian=False, 
     if type_model == "autoencoder LSTM":
          autoencoderLSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save)
     elif type_model == "CNN-LSTM":
-         CNN_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=True)
+         CNN_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
         
     elif type_model == "CNN-BiLSTM":
-         CNN_BiLSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=True)
+         CNN_BiLSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     
     elif type_model == "SCB-LSTM":
-          SCB_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=True)
+          SCB_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
           
     elif type_model == "stacked LSTM":
-          stacked_LSTM.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=True)
+          stacked_LSTM.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     elif type_model == "stacked BiLSTM":
-          stacked_BiLSTM.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=True)
+          stacked_BiLSTM.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)

@@ -30,10 +30,24 @@ def get_sigma(vector, mu):
     
 #https://scipy-lectures.org/intro/numpy/operations.html
 def get_error_vector(X_val, X_pred): 
-    Xval = process_predict(X_val)
-    X_pred = process_predict(X_pred)     
-  
-    x_input = Xval
+    print("error vector func")
+    print("X_val shape", X_val.shape)
+    print("X_pred shape", X_pred.shape)
+    fo = open("demofile4.txt", "w")
+    for el in X_pred:
+        fo.write("X_pred " +  str(el))
+    fo.close()
+    X_val = process_predict(X_val)
+    X_pred = process_predict(X_pred)   
+    
+    print("Xval shape", X_val.shape)
+    print("X_pred shape", X_pred.shape)
+    f = open("demofile3.txt", "w")
+    for el_pred, el_val in zip(X_pred, X_val):
+        f.write("X_pred " +  str(el_pred) + "\n")
+        f.write("X_val" + str(el_val) + "\n")
+    f.close()
+    x_input = X_val
     x_output = X_pred
     
     return np.abs(x_output - x_input)
@@ -47,10 +61,18 @@ def anomaly_score(mu, sigma, X):
     return a
     
 
+def process_input(X_train, y_train):
+    if len(X_train.shape)==3:
+        return X_train
+          
+    else:
+        print("do another")
+        Xtrain = y_train
+    return Xtrain
 
 
 def get_threshold(X_val_2_D, score):
-    thresholds = [0.05, 0.5, 1, 2, 3]
+    thresholds = [x for x in range(0, 20)]
     all_anormals = list()
     for th in thresholds:
         no_anomalous = 0
@@ -67,12 +89,11 @@ def get_threshold(X_val_2_D, score):
     min_th = thresholds[index_min]
     return min_th
 
-def process_predict(X_pred):
+def process_predict(X_pred): 
     if len(X_pred.shape) == 3:
-        X_pred = np.squeeze(X_pred)
-        X_pred = X_pred[:,0]
-        X_pred = X_pred.reshape(X_pred.shape[0], 1)
-     
+       X_pred = np.squeeze(X_pred)
+       X_pred = X_pred[:,-1]
+       X_pred = X_pred.reshape(X_pred.shape[0], 1)
     return X_pred
 def plot_training_losses(history):
     fig, ax = plt.subplots(figsize=(14,6), dpi=80)
@@ -105,22 +126,8 @@ def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, 
     if size  > 1:
         X_train_full = pd.concat(raw)
     else:
-        print("normal_sequence", raw)
-        print("size", len(raw))
-        print(raw[0])
         X_train_full = raw[0]
         
-    print("after concantening pieces", X_train_full)
-    print(type(X_train_full))
-    stime ="01-01-2017 00:00:00"
-    etime ="01-03-2017 00:00:00"
-
-    frmt = '%d-%m-%Y %H:%M:%S'
-    min_date = datetime.datetime.strptime(stime, frmt)
-    max_date = datetime.datetime.strptime(etime, frmt)
-    print("min date", type(min_date))
-    print("type", X_train_full.dtypes)
-
     X_train_full = preprocess(X_train_full, timesteps, form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
     print("X_train_full shape>>>", X_train_full.shape)
     if output_form == "3D":
@@ -132,7 +139,7 @@ def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, 
 
 
 def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None):
-    print("preprocess")
+    print("preprocess 6")
     print("form 1", form)
     print("input_data shape", input_data.shape)
     if form == "4D":
@@ -185,10 +192,12 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
     
     elif form == "3D":
         raw = raw.drop(['date'], axis = 1)
-        #data = np.array(raw['value'])
+        print("raw shape", raw.shape)
         data = series_to_supervised(raw, n_in=timesteps)
+        print("data", data.shape)
         data = np.array(data.iloc[:, :timesteps])
-
+        print("data", data.shape)
+        
         #normalize data
         scaler = MinMaxScaler()
         data = scaler.fit_transform(data)
@@ -286,7 +295,12 @@ def generate_sets_days(normal_sequence, timesteps, validation=True):
         size_val = round(0.5*X_val.shape[0])
        
         X_val_1_D = X_val.iloc[:size_val, :]
+        print("X_val_1_D min days", min(X_val_1_D['date']))
+        print("X_val_1_D max days", max(X_val_1_D['date']))
         X_val_2_D = X_val.iloc[size_val:, :]
+        print("X_val_2_D days min", min(X_val_2_D['date']))
+        print("X_val_2_D max days", max(X_val_2_D['date']))
+        
     
         return X_train, X_val_1_D, X_val_2_D
     return X_train
