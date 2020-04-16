@@ -13,7 +13,8 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import datetime
 import os
-def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
+#https://machinelearningmastery.com/convert-time-series-supervised-learning-problem-python/
+def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, stride=None):
    """
    Frame a time series as a supervised learning dataset.
    Arguments:
@@ -29,7 +30,7 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
    #n_vars = df.shape[1]
    print("nvars", n_vars)
  
-   cols, names = list(), list()
+   cols, names, pivots = list(), list(), list()
     
    # input sequence (t-n, ... t-1)
    for i in range(n_in, 0, -1):
@@ -46,7 +47,38 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True):
    agg = pd.concat(cols, axis=1)
 
    agg.columns = names
-	# drop rows with NaN values
+
+   
+   #stride - delete windows
+   if stride != None:
+       indexes_to_drop = list()
+       for i in range(stride, agg.shape[0], stride):
+           print("index", i)
+           pivots += [i]
+           
+       onset = 0
+       offset = pivots[0]
+       for i in range(0, len(pivots)):
+           print("onset", onset)
+           print("offset", offset)
+           to_drop = [ x for x in range(onset,offset)]
+           indexes_to_drop += to_drop
+           try:
+               onset = pivots[i] + 1
+               offset = pivots[i+1]
+              
+           except IndexError:
+               onset = pivots[i] + 1
+               offset = agg.shape[0]
+               to_drop = [ x for x in range(onset,offset)]
+               indexes_to_drop += to_drop
+         
+           
+           
+       print("indexes_to_drop", indexes_to_drop)
+       
+       agg.drop(df.index[indexes_to_drop], inplace=True)
+   # drop rows with NaN values  
    if dropnan:
        agg.dropna(inplace=True)
    print("agg", agg)
@@ -210,15 +242,6 @@ def csv_to_chunks(sensorId, path, start=None, end=None, n_limit=None):
     list_df = np.split(df, indexes)
     print("list df", list_df)
     
-    #DO THIS IN INDEXES, IT'S MORE EASY!
-    #TODO
-    """
-    for i in range(0, len(list_df)):
-        if list_df[i].shape[0] > 2000:
-            size = list_df[i].shape[0]
-            df_1 = list_df[i].iloc[:size,:]
-            df_2 = list_df[i].iloc[size:,:]
-    """
                        
     return list_df
 
@@ -403,11 +426,68 @@ def downsample(df, minutes):
      df['date'] = df.index.copy()
      df.index = pd.RangeIndex(start=0, stop=df.shape[0])
      return df
+def get_total_max_date(table):
+     db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
+     conn = create_engine(db_connection)
+     query = """SELECT MAX(date)
+                FROM %s""" % (table)
+     df = pd.read_sql(query, conn)
+     res = pd.to_datetime(df.iloc[0,0])
+   
+     frmt ='%Y-%m-%d %H:%M:%S'
+     res = datetime.datetime.strptime(str(res), frmt)
+       
+     new_frmt = '%d-%m-%Y %H:%M:%S'
+     res = datetime.datetime.strftime(res, new_frmt)
+  
+     return res
+     
+     
+def get_total_min_date(table):
+     db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
+     conn = create_engine(db_connection)
+     query = """SELECT MIN(date)
+                FROM %s""" % (table)
+                
+     df = pd.read_sql(query, conn)
+     res = pd.to_datetime(df.iloc[0,0])
+   
+     frmt ='%Y-%m-%d %H:%M:%S'
+     res = datetime.datetime.strptime(str(res), frmt)
+       
+     new_frmt = '%d-%m-%Y %H:%M:%S'
+     res = datetime.datetime.strftime(res, new_frmt)
+  
+     return res
+
+
+def generate_total_sequence(idSensor, table, start, end, n_limit=None):
+    df = pd.DataFrame()
+
+    init_path = os.path.dirname(os.getcwd())
+    path = ""
+    if init_path == "/content/drive/My Drive/Tese/exploratory":
+        path =  init_path + "/wisdom/dataset/infraquinta/real/sensor_"+ str(idSensor) + ".csv"
+    else:
+        path = init_path + "\\dataset\\infraquinta\\real\\sensor_" + str(idSensor) + ".csv"
+    
+    #df = csv_to_df(idSensor, path, limit=limit)
+   
+    df = csv_to_chunks(idSensor, path, start=start, end=end, n_limit=n_limit)
  
+    return df
+
+    return True
 def generate_sequences(sensorId, table, start=None, end=None, simulated=False, n_limit = None, df_to_csv = False):
+    print("generate_sequences")
     normal_sequence = pd.DataFrame()
     test_sequence = pd.DataFrame()
+    total_sequence = generate_total_sequence(sensorId, table, start, end, n_limit=n_limit)
     
+    stime = "02-12-2017 00:00:00"
+    etime = "31-12-2017 00:00:00"
+        
+    test_sequence = select_data(total_sequence[0], stime, etime)
     if start!=None and end!=None:
         frmt = '%d-%m-%Y %H:%M:%S'
         start = datetime.datetime.strptime(start, frmt)
@@ -422,10 +502,11 @@ def generate_sequences(sensorId, table, start=None, end=None, simulated=False, n
             path = init_path + "\\dataset\\infraquinta\\real\\sensor_" + str(sensorId) + ".csv"
                
         normal_sequence = generate_normal(sensorId, start=start, end=end, simulated=simulated, n_limit=n_limit, df_to_csv=df_to_csv)
-        
+    
     
     else:
         normal_sequence = generate_normal(sensorId, start=start, end=end,simulated=simulated, n_limit=n_limit, df_to_csv = df_to_csv)
        
-    
+    print(">>>size normal sequence:", len(normal_sequence))
+   
     return normal_sequence, test_sequence
