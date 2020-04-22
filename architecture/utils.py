@@ -13,6 +13,8 @@ from sklearn.preprocessing import MinMaxScaler
 import os
 import pickle
 from keras.models import load_model
+import base64
+from io import BytesIO
 
 def get_mu(vector):
     return np.mean(vector, axis=0)
@@ -103,7 +105,14 @@ def plot_training_losses(history):
     ax.set_ylabel('Loss (mae)')
     ax.set_xlabel('Epoch')
     ax.legend(loc='upper right')
+    
+    tmpfile = BytesIO()
+    fig.savefig(tmpfile, format='png')
+    encoded = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
+    
     plt.show()
+    
+    return encoded
     
     
 
@@ -120,15 +129,9 @@ def concatenate_features(df_list_1, df_list_2):
         
     return list_result
 
-def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, n_input=None, n_features=None):  
-    X_train_full = list()
-    size = len(raw)
-    if size  > 1:
-        X_train_full = pd.concat(raw)
-    else:
-        X_train_full = raw[0]
-        
-    X_train_full = preprocess(X_train_full, timesteps, form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, n_input=None, n_features=None):        
+    print("generate_full")
+    X_train_full = preprocess(raw, timesteps, form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
     print("X_train_full shape>>>", X_train_full.shape)
     if output_form == "3D":
         y_train_full = X_train_full[:, -1, :]
@@ -248,11 +251,6 @@ def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
 
 
 def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None):       
-    print("generate_sets")
-    print("n_input", n_input)
-    print("output_form", output_form)
-    print("input_form", input_form)
-    print("validation generate_sets", validation)
     if validation == True:
         return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
                
@@ -272,18 +270,13 @@ def split_features(n_features, X_train):
  
     for i in range(n_features):
         aux = X_train[:, :, :, i]
-        print("aux shape", aux.shape)
         reshaped = aux.reshape((aux.shape[0], aux.shape[1], aux.shape[2], 1))
         input_data.append(reshaped)
-     
-        print("reshaped", reshaped.shape)
         
     return input_data
 
 #LSTM
 def generate_sets_days(normal_sequence, timesteps, validation=True):
-    print("normal_sequence", type(normal_sequence))
-    
     X_train_D = normal_sequence
     
     size_X_train_D = X_train_D.shape[0]
@@ -309,8 +302,7 @@ def generate_sets_days(normal_sequence, timesteps, validation=True):
 
 def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None):
      print("generate validation")
-     print("input form", input_form)
-     print("output form", output_form)
+     print("X_train_D", X_train_D)
      size_X_train_D = X_train_D.shape[0]
      size_train = round(size_X_train_D*0.8)
      
@@ -321,9 +313,7 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
        
      X_val_1_D = X_val.iloc[:size_val, :]
      X_val_2_D = X_val.iloc[size_val:, :]
-     print("X_val_1 shape", X_val_1_D.shape)
-     print("X_val_2 shape", X_val_2_D.shape)
-     print("X_train_D", X_train_D.shape)
+  
     
      X_train = preprocess(X_train_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      X_val_1 = preprocess(X_val_1_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
@@ -373,7 +363,7 @@ def load_parameters(filename):
 
 def detect_anomalies(X_test, h5_filename, choose_th=None):
     print("shape", X_test.shape)
-    param = load_parameters()
+    param = load_parameters(h5_filename)
 
     filename = h5_filename + '.h5'
     current_dir = os.getcwd()

@@ -8,7 +8,7 @@ Created on Fri Apr  3 13:45:57 2020
 from keras.layers import Input, Dense, LSTM, RepeatVector, TimeDistributed, Flatten, Dropout
 from keras.models import Sequential
 from keras.models import Model
-from preprocessing.series import create_dataset_as_supervised, create_dataset, generate_sequences, series_to_supervised, select_data, generate_normal
+from preprocessing.series import create_dataset_as_supervised, create_dataset, generate_sequences, series_to_supervised, select_data, generate_normal, change_format
 from preprocessing.series import downsample
 import matplotlib.pyplot as plt
 from sklearn.preprocessing import MinMaxScaler
@@ -20,7 +20,7 @@ from keras.callbacks import EarlyStopping, ModelCheckpoint
 from keras.models import load_model
 from keras.backend import clear_session
 from keras import regularizers
-import datetime
+from datetime import datetime
 from keras.optimizers import Adam
 from architecture.evaluate import f_beta_score
 import time
@@ -28,6 +28,8 @@ import pickle
 import os
 from architecture import utils
 from architecture import tuning 
+from report import image, HtmlFile, tag, Text
+from base.Network import Network
 
 class EncDec(object):
     config = []
@@ -45,23 +47,26 @@ class EncDec(object):
     n_steps = 96
     n_seq = None
     n_input = None
-    stime = "01-01-2017 00:00:00"
-    etime = "01-12-2017 00:00:00"
+    #stime = "01-01-2017 00:00:00"
+    #etime = "01-12-2017 00:00:00"
+    stime = None
+    etime = None
         
         
     @classmethod
     def do_train(cls, timesteps=96, simulated = False, bayesian=False, save=True, validation=True):
-            print("do_train")
-            print("validation", validation)
-            print("function", cls.type_model_func)
-            print("to index", cls.toIndex)
+            network = Network("infraquinta")
+            path_report = "F:/manual/Tese/exploratory/wisdom/reports_files/report_models/%s.html" % cls.report_name
+    
+            EncDec.init_report(path_report)
             mu = cls.mu
             sigma = cls.sigma
             
             stime =cls.stime
             etime = cls.etime
+            EncDec.n_steps = timesteps
         
-            normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp",start=stime, end=etime, simulated=simulated, df_to_csv=True)
+            normal_sequence, test_sequence = generate_sequences("12", "sensortgmeasurepp",start=stime, end=etime, simulated=simulated, df_to_csv=True)
           
             config = cls.config
             if bayesian == True:
@@ -73,7 +78,6 @@ class EncDec(object):
             
             clear_session()
                
-            print("input_form", cls.input_form)
             X_train_full, y_train_full = utils.generate_full(normal_sequence,timesteps, input_form=cls.input_form, output_form=cls.output_form, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)
             model = cls.type_model_func(X_train_full, y_train_full, config)
             batch_size = tuning.get_param(config, cls.toIndex, "batch_size")
@@ -84,24 +88,26 @@ class EncDec(object):
             if simulated == True:
                 validation = False
                 
-            print("type_model_func", cls.type_model_func)
-            print("batch_size", batch_size)
             model = cls.type_model_func(X_train_full, y_train_full, config)
             best_h5_filename = "best_" + cls.h5_file_name + ".h5"
-            for df_chunk in normal_sequence:
-                if is_best_model:
-                    model = load_model(best_h5_filename)
-                number_of_chunks += 1
-                print("number of chunks:", number_of_chunks)
-                X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(df_chunk, timesteps,input_form = cls.input_form, output_form = cls.output_form, validation=validation, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)  
-                es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
-                mc = ModelCheckpoint(best_h5_filename, monitor='val_loss', mode='min', save_best_only=True)
-                if validation:
-                    history = model.fit(X_train, y_train, validation_data=(X_val_1, y_val_1), epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
-                else:
-                    history = model.fit(X_train, y_train, epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
-                is_best_model = True
+            
+            if is_best_model:
+                model = load_model(best_h5_filename)
+            number_of_chunks += 1
+            X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(normal_sequence, timesteps,input_form = cls.input_form, output_form = cls.output_form, validation=validation, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)  
+            es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
+            mc = ModelCheckpoint(best_h5_filename, monitor='val_loss', mode='min', save_best_only=True)
+            if validation:
+                history = model.fit(X_train, y_train, validation_data=(X_val_1, y_val_1), epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
+            else:
+                history = model.fit(X_train, y_train, epochs=20, batch_size=batch_size, callbacks=[es, mc]).history
+            is_best_model = True
               
+            cls.file.append(Text.Text("Loss last epoch:" + str(history['loss'][-1])))
+            cls.file.append(Text.Text("Validation loss last epoch:" + str(history['val_loss'][-1])))
+            
+            
+            
             filename = cls.h5_file_name +'.h5'
             path = os.path.join("..//gui_margarida//gui//assets", filename)
             model.save(path)
@@ -111,7 +117,10 @@ class EncDec(object):
             print("Loaded model")
                 
             if validation == True:
-                utils.plot_training_losses(history)
+                encoded = utils.plot_training_losses(history)    
+                img = image.Image("Training losses graph", encoded)
+                cls.file.append(img)
+            
                 
             y_pred = model.predict(X_train_full)
             y_pred = utils.process_predict(y_pred)
@@ -161,9 +170,8 @@ class EncDec(object):
             vector = utils.np.squeeze(vector)
             score = utils.anomaly_score(mu, sigma, vector)
             
-            normal_sequence_full = pd.concat(normal_sequence)
-         
-            _, _, X_val_2_D = utils.generate_sets_days(normal_sequence_full, timesteps)
+           
+            _, _, X_val_2_D = utils.generate_sets_days(normal_sequence, timesteps)
             
             print("x_val_2_D shape", X_val_2_D.shape)
             print("score", len(score))
@@ -194,8 +202,58 @@ class EncDec(object):
             if save == True:
                 utils.save_parameters(mu, sigma, timesteps, min_th, EncDec.h5_file_name)
             
+           
+            prediction = utils.detect_anomalies(test_sequence, cls.h5_file_name)
+            events = network.loadEvents()
+            cls.file.append(Text.Text("Number of events year:" + str(len(events))))
+            
+            
+            start = min(test_sequence['date'])
+            end = max(test_sequence['date'])
+            
+            start = change_format(start, '%Y-%m-%d %H:%M:%S', '%d-%m-%Y %H:%M:%S')
+            end = change_format(end, '%Y-%m-%d %H:%M:%S', '%d-%m-%Y %H:%M:%S')
+            events = network.select_events(start, end)
+            cls.file.append(Text.Text("Number of events during %s to %s: %s" % 
+                                      (start, end, len(events))))
+            
+            TP = 0
+            FP = 0
+            for date in prediction['date']:
+                for event in events:
+                  print(type(date))
+                  print(type(event.getStart()))
+                  date = pd.to_datetime(date)
+                  
+                  if date >= event.getStart() and date <= event.getEnd():
+                      print("match")
+                      TP += 1
+                  else:
+                      FP += 1
+            
+            cls.file.append(Text.Text("True positive:" + str(TP)))
+            cls.file.append(Text.Text("False positive:" + str(FP)))
+            EncDec.write_report(path_report)
+        
             return True
         
+    @classmethod
+    def write_report(cls, file_name):
+        cls.file.writeToHtml(file_name)
+        
+    @classmethod
+    def init_report(cls, file_name):
+        cls.file = HtmlFile.HtmlFile()
+        html = tag.Html()
+        cls.file.append(html)
+        head = tag.Head()
+        cls.file.append(head)
+        body = tag.Body()
+        cls.file.append(body)
+        
+    
+    
+    
     def operation(data, anomaly_threshold):
             prediction = utils.detect_anomalies(data, EncDec.h5_file_name)
             return prediction
