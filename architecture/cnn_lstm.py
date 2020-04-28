@@ -52,11 +52,14 @@ from EncDec import EncDec
   
 
 class CNN_LSTM(EncDec):
-    config =  [1, 1, 20, 1, 2, 128, 1e-2, 0.5, 0.5]
-    n_seq = 5
+    report_name = "CNN_LSTMReport"
+    n_seq = 7
     n_input = n_seq * EncDec.n_steps
     input_form = "4D"
     output_form = "2D"
+    dropout = False
+    regularizer = "L1"
+    batch_normalization = False
     
     @classmethod
     def get_n_seq(cls):
@@ -77,12 +80,15 @@ class CNN_LSTM(EncDec):
          n_steps = EncDec.n_steps
          num_pooling_layers = tuning.get_param(config, toIndex, "num_pooling_layers")
          n_stride = tuning.get_param(config, toIndex, "stride_size")
+         print("stride size", n_stride)
          n_kernel = tuning.get_param(config, toIndex, "kernel_size")
+         print("n_kernel", n_kernel)
          n_filters = tuning.get_param(config, toIndex, "no_filters")
+         print("n_filters", n_filters)
          num_encdec_layers = tuning.get_param(config, toIndex, "num_encdec_layers")
          learning_rate = tuning.get_param(config, toIndex, "learning_rate")
          drop_rate_1 = tuning.get_param(config, toIndex, "drop_rate_1")
-         n_nodes = 100
+         n_nodes = 16
          
          n_features = X_train.shape[3]
          print("n_features", n_features)
@@ -95,6 +101,8 @@ class CNN_LSTM(EncDec):
              name = 'pooling_layer_{0}'.format(i+1)
              model.add(TimeDistributed(MaxPooling1D(pool_size=2, name=name)))
          model.add(TimeDistributed(MaxPooling1D(pool_size=2)))
+         if CNN_LSTM.dropout == True:
+             model.add(Dropout(drop_rate_1))
          model.add(TimeDistributed(Flatten())) 
          #model.add((Dense(3)))
          #model.add(Reshape((1,2))) 
@@ -103,7 +111,8 @@ class CNN_LSTM(EncDec):
              name = 'layer_lstm_decoder_{0}'.format(i+1)
              model.add(LSTM(n_nodes, activation='relu', return_sequences=True, name=name))
          model.add(LSTM(n_nodes, activation='relu', return_sequences=False))
-         model.add(Dropout(drop_rate_1))
+         if CNN_LSTM.dropout == True:
+             model.add(Dropout(drop_rate_1))
          model.add(Dense(n_features))
             
                
@@ -227,9 +236,11 @@ class CNN_LSTM(EncDec):
      
          for i in range(0, len(dimensions)):
              EncDec.toIndex[dimensions[i].name] = i
+             
+         return dimensions, default_parameters
      
-    hyperparam_opt(EncDec.n_steps)
-    
+    dimensions, default_parameters = hyperparam_opt(EncDec.n_steps)
+    config = default_parameters
     @use_named_args(dimensions=EncDec.dimensions)
     def fitness(num_pooling_layers, stride_size, kernel_size, no_filters, num_encdec_layers, batch_size, learning_rate, drop_rate_1):  
         init = time.perf_counter()

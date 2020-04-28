@@ -13,31 +13,30 @@ class HtmlFile:
     elements = list()
  
     #this makes that the agreement imposed by an "interface" is met
-    def writeToHtml(self, filename):
+    def writeToHtml(self, path):
         try:
             
             string_html = str()
             for element in self.elements:
                 string_html += element.writeToHtml()
-            self.writeFile(string_html, filename)
+            self.writeFile(string_html, path)
            
             return string_html
         except AttributeError:
             print('The operation cant be done', element)
     
-    def writeFile(self, string_html, name):
+    def writeFile(self, string_html, path):
          print("WRITE FILE")
-         filename = "F:/Tese/exploratory/wisdom/reports_files/report_pvalue/%s.html" % name
-         self.name = filename
-         print("filename", filename)
-         if not os.path.exists(os.path.dirname(filename)):
+         self.name = path
+         print("filename", path)
+         if not os.path.exists(os.path.dirname(path)):
              try:
-                os.makedirs(os.path.dirname(filename))
+                os.makedirs(os.path.dirname(path))
              except OSError as exc: # Guard against race condition
                 if exc.errno != errno.EEXIST:
                     raise
 
-         with open(filename, "w") as f:
+         with open(path, "w") as f:
              f.write(string_html)
              f.close()
 

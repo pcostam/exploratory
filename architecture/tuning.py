@@ -17,7 +17,7 @@ def get_param_conv_layers(timesteps):
     dim_no_filters = Integer(low=0, high=5, name='no_filters')
     
     dimensions = [dim_num_pooling_layers, dim_stride_size, dim_kernel_size, dim_no_filters]
-    default_parameters = [1, 1, 20, 1]
+    default_parameters = [1, 2, 5, 16]
     
     return dimensions, default_parameters
 
@@ -32,7 +32,7 @@ def get_param_encdec(timesteps):
                   dim_learning_rate,
                   dim_drop_rate_1]
     
-    default_parameters = [2, 128, 1e-2, 0.5]
+    default_parameters = [2, 64, 1e-2, 0.25]
     
     return dimensions, default_parameters
 

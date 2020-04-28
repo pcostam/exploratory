@@ -15,6 +15,7 @@ import pickle
 from keras.models import load_model
 import base64
 from io import BytesIO
+import seaborn as sns
 
 def get_mu(vector):
     return np.mean(vector, axis=0)
@@ -32,9 +33,6 @@ def get_sigma(vector, mu):
     
 #https://scipy-lectures.org/intro/numpy/operations.html
 def get_error_vector(X_val, X_pred): 
-    print("error vector func")
-    print("X_val shape", X_val.shape)
-    print("X_pred shape", X_pred.shape)
     fo = open("demofile4.txt", "w")
     for el in X_pred:
         fo.write("X_pred " +  str(el))
@@ -68,7 +66,6 @@ def process_input(X_train, y_train):
         return X_train
           
     else:
-        print("do another")
         Xtrain = y_train
     return Xtrain
 
@@ -110,11 +107,22 @@ def plot_training_losses(history):
     fig.savefig(tmpfile, format='png')
     encoded = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
     
-    plt.show()
+    #plt.show()
     
     return encoded
     
-    
+def plot_bins_loss(y_pred, ytrain, scored):
+    scored['Loss_mae'] = np.mean(np.abs(y_pred-ytrain), axis = 1)
+    figure = plt.figure(figsize=(16,9), dpi=80)
+    plt.title('Loss Distribution', fontsize=16)
+    sns.distplot(scored['Loss_mae'], bins=20, kde=True, color='blue')
+    #plt.show()
+    tmpfile = BytesIO()
+    figure.savefig(tmpfile, format='png')
+    encoded = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
+    return encoded
+
+
 
 
 def concatenate_features(df_list_1, df_list_2):
@@ -142,12 +150,10 @@ def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, 
 
 
 def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None):
-    print("preprocess 6")
-    print("form 1", form)
-    print("input_data shape", input_data.shape)
     if form == "4D":
         raw = raw.drop(['date'], axis = 1)
         data = series_to_supervised(raw, n_in=n_input)
+        print("shape data", data.shape)
         data = np.array(data.iloc[:, :n_input])
      
         #normalize data
@@ -166,41 +172,28 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
         return data
        
     elif form == "2D":
-        print("input_data shape", input_data.shape)
-        print("len input_data", len(input_data.shape))
         if len(input_data.shape) == 3:
             y_train = input_data[:, -1, :]
         else:
-            print("2D OTHER")
             raw = raw.drop(['date'], axis=1)
             data = series_to_supervised(raw, n_in=n_input)
-            print("data to supervised", data)
             data = data.values
-            print("data", type(data))
-            print("data", data)
-
-            if n_features == 1:
-                y_train = [data[:, -1]]
-            else:
-                y_train = data[:, :n_features]
-                print("y_train_full", y_train)
+      
+            y_train = data[:, :n_features]
 
             scaler = MinMaxScaler()
             y_train = scaler.fit_transform(y_train)
 
             y_train =  np.squeeze(y_train)
             y_train = np.reshape(y_train, (y_train.shape[0], n_features))
-            print("Y_TRAIN 2D SHAPE", y_train.shape)
+         
         return y_train
     
     elif form == "3D":
         raw = raw.drop(['date'], axis = 1)
-        print("raw shape", raw.shape)
         data = series_to_supervised(raw, n_in=timesteps)
-        print("data", data.shape)
         data = np.array(data.iloc[:, :timesteps])
-        print("data", data.shape)
-        
+    
         #normalize data
         scaler = MinMaxScaler()
         data = scaler.fit_transform(data)
@@ -212,35 +205,16 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
 
 
 def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
-    y_train_full = list()
-    size = len(normal_sequence)
-    if size  > 1:
-        y_train_full = pd.concat(normal_sequence)
-    else:
-        print("normal_sequence", normal_sequence)
-        print("size", len(normal_sequence))
-        print(normal_sequence[0])
-        y_train_full = normal_sequence[0]
-    
-    print(type(y_train_full))
-  
-
-    print("type", y_train_full.dtypes)
-    
-    y_train_full = y_train_full.drop(['date'], axis=1)
+    y_train_full = normal_sequence.drop(['date'], axis=1)
     data = series_to_supervised(y_train_full, n_in=n_input)
-    print("data to supervised", data)
+   
     data = data.values
-    print("data", type(data))
-    print("data", data)
     
     if n_features == 1:
         y_train_full = [data[:, -1]]
     else:
         y_train_full = data[:, :n_features]
-    print("y_train_full", y_train_full)
-    
-    
+   
     
     scaler = MinMaxScaler()
     y_train_full = scaler.fit_transform(y_train_full)
@@ -301,19 +275,19 @@ def generate_sets_days(normal_sequence, timesteps, validation=True):
 
 
 def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None):
-     print("generate validation")
-     print("X_train_D", X_train_D)
      size_X_train_D = X_train_D.shape[0]
+     print("size_X_train_D", size_X_train_D)
      size_train = round(size_X_train_D*0.8)
      
      X_train = X_train_D.iloc[:size_train, :]
      X_val = X_train_D.iloc[size_train:, :]
             
      size_val = round(0.5*X_val.shape[0])
+     print("size_val", size_val)
        
      X_val_1_D = X_val.iloc[:size_val, :]
      X_val_2_D = X_val.iloc[size_val:, :]
-  
+     print("shape x_val", X_val_1_D.shape)
     
      X_train = preprocess(X_train_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      X_val_1 = preprocess(X_val_1_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
@@ -324,10 +298,8 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
      y_val_1 = preprocess(X_val_1_D, timesteps, input_data = X_val_1, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      y_val_2 = preprocess(X_val_2_D, timesteps, input_data = X_val_2, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      
-
-        
-     print("X_train shape", X_train.shape)
-     print("y_train shape", y_train.shape)
+     print("X_val_1", X_val_1.shape)
+     print("y_val_1", y_val_1.shape)
      
      return X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2
  
@@ -361,8 +333,7 @@ def load_parameters(filename):
     
     return param
 
-def detect_anomalies(X_test, h5_filename, choose_th=None):
-    print("shape", X_test.shape)
+def detect_anomalies(X_test, y_test, X_test_D, h5_filename, choose_th=None):
     param = load_parameters(h5_filename)
 
     filename = h5_filename + '.h5'
@@ -389,16 +360,15 @@ def detect_anomalies(X_test, h5_filename, choose_th=None):
         
     print("treshold", anomalies_th)
     
-    Xtest = preprocess(X_test, timesteps)
-    print("Xtest shape", Xtest.shape)
-    print("Xtest type", type(Xtest))
     
+    #Xtest = preprocess(X_test, timesteps)
+  
     print("Predict")
-    X_pred = model.predict(Xtest)
+    y_pred = model.predict(X_test)
 
     predict = pd.DataFrame()
     
-    vector = get_error_vector(Xtest, X_pred)
+    vector = get_error_vector(y_test, y_pred)
     vector = np.squeeze(vector)
         
     score = anomaly_score(mu, sigma, vector)
@@ -410,8 +380,8 @@ def detect_anomalies(X_test, h5_filename, choose_th=None):
     for sc in score:
         if sc > anomalies_th:
              anomalies += 1
-             value = X_test['value'].iloc[i]
-             date = X_test['date'].iloc[i]
+             value = X_test_D['value'].iloc[i]
+             date = X_test_D['date'].iloc[i]
              dates.append(date)
              values.append(value)
         i += 1
@@ -423,5 +393,14 @@ def detect_anomalies(X_test, h5_filename, choose_th=None):
     predict['date'] = dates
     return predict
 
-            
+def test_2d():
+    col_1 = [x for x in range(20)]
+    col_2 = [x for x in range(20)]
+    d = {'value': col_1, 'date':col_2}
+    df = pd.DataFrame(data=d)
+    y_test = preprocess(df, 2, form="2D", input_data=pd.DataFrame(), n_seq=2, n_input=4, n_features=1)
+    print("y_test shape", y_test.shape)
+    #comeu 4 porque e' o n_input e o n_input nao considera os nans
+    return True
+
     

@@ -40,9 +40,8 @@ class autoencoderLSTM(EncDec):
     dropout = False
     regularizer = "L1"
     file = HtmlFile.HtmlFile()
-    hidden_size = 64
-    code_size = 32
-    increment = 0
+    hidden_size = 16
+    code_size = 4
     
     print("testing class")
     @classmethod
