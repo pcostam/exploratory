@@ -472,7 +472,9 @@ class Stats(object):
             print("False positive", FP)
    
         file_name = "reportPvalueS%s" % sensorId
-        Stats.write_report(file_name)
+        path = "F:/Tese/exploratory/wisdom/reports_files/report_pvalue/%s.html" % file_name
+        
+        Stats.write_report(path)
         
         cursor.close()
         db.close()

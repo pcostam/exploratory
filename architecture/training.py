@@ -11,14 +11,16 @@ from architecture.cnn_biLSTM import CNN_BiLSTM
 from architecture.scb_lstm import SCB_LSTM
 from architecture.stacked_lstm import stacked_LSTM
 from architecture.stacked_bilstm import stacked_BiLSTM
+
 models = ["autoencoder LSTM", "CNN-BiLSTM", "CNN-LSTM", "SCB-LSTM", "stacked BiLSTM", "stacked LSTM"]
-def training(type_model="all", timesteps=96, simulated = False, bayesian=False, save=True, validation=True):
+def training(type_model="all", timesteps=96, simulated = False, bayesian=False, save=True, validation=True, hidden_size=16, code_size=4):
     if type_model == "all":
         for model in models:
             print("dotrain")
             #do_train
     if type_model == "autoencoder LSTM":
-         autoencoderLSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save)
+         autoencoderLSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, hidden_size=hidden_size, code_size=code_size)
+    
     elif type_model == "CNN-LSTM":
          CNN_LSTM.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
         
@@ -30,5 +32,6 @@ def training(type_model="all", timesteps=96, simulated = False, bayesian=False, 
           
     elif type_model == "stacked LSTM":
           stacked_LSTM.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
+    
     elif type_model == "stacked BiLSTM":
           stacked_BiLSTM.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)

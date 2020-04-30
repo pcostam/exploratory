@@ -7,8 +7,8 @@ Created on Tue Mar  3 12:42:20 2020
 from preprocessing.series import create_data, series_to_supervised, generate_sequences, generate_normal
 from preprocessing.series import select_data
 from keras.models import Sequential
-from keras.layers import Dense, Reshape, RepeatVector
-from keras.layers import LSTM
+from keras.layers import Dense, Reshape, RepeatVector, BatchNormalization
+from keras.layers import LSTM, Activation
 from keras.layers import TimeDistributed
 from keras.layers import Flatten, Dropout
 from keras.layers.convolutional import Conv1D
@@ -59,7 +59,7 @@ class CNN_LSTM(EncDec):
     output_form = "2D"
     dropout = False
     regularizer = "L1"
-    batch_normalization = False
+    batch_normalization = True
     
     @classmethod
     def get_n_seq(cls):
@@ -73,6 +73,25 @@ class CNN_LSTM(EncDec):
     @classmethod
     def get_output_form(cls):
         return cls.output_form
+    
+    def unit_BN(model, config, is_input=False):
+        toIndex = EncDec.toIndex
+        n_stride = tuning.get_param(config, toIndex, "stride_size")
+        print("stride size", n_stride)
+        n_kernel = tuning.get_param(config, toIndex, "kernel_size")
+        print("n_kernel", n_kernel)
+        n_filters = tuning.get_param(config, toIndex, "no_filters")
+        print("n_filters", n_filters)
+        n_steps = CNN_LSTM.n_steps
+        n_features = CNN_LSTM.n_features
+        if is_input:
+            model.add(TimeDistributed(Conv1D(filters=n_filters, strides=n_stride, kernel_size=n_kernel, activation='relu'), input_shape=(None,n_steps,n_features)))
+        else:
+            model.add(TimeDistributed(Conv1D(filters=n_filters, strides=n_stride, kernel_size=n_kernel, activation='relu')))
+        model.add(BatchNormalization())
+        model.add(Activation('relu'))
+        
+        return model
     
     
     def multi_channel(X_train, y_train, config):
@@ -95,12 +114,18 @@ class CNN_LSTM(EncDec):
          
          model = Sequential()
          model.add(TimeDistributed(Conv1D(filters=n_filters, strides=n_stride, kernel_size=n_kernel, activation='relu'), input_shape=(None,n_steps,n_features)))
-         for i in range(0, num_encdec_layers):
-             model.add(TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu')))
-         for i in range(0, num_pooling_layers):
-             name = 'pooling_layer_{0}'.format(i+1)
-             model.add(TimeDistributed(MaxPooling1D(pool_size=2, name=name)))
-         model.add(TimeDistributed(MaxPooling1D(pool_size=2)))
+         if CNN_LSTM.batch_normalization:
+             
+             model = CNN_LSTM.unit_BN(model, config, is_input=True)
+             for i in range(0, num_encdec_layers):
+                 model = CNN_LSTM.unit_BN(model, config, is_input=False)
+         else:
+             for i in range(0, num_encdec_layers):
+                 model.add(TimeDistributed(Conv1D(filters=n_filters, kernel_size=n_kernel, activation='relu')))
+             for i in range(0, num_pooling_layers):
+                 name = 'pooling_layer_{0}'.format(i+1)
+                 model.add(TimeDistributed(MaxPooling1D(pool_size=2, name=name)))
+             model.add(TimeDistributed(MaxPooling1D(pool_size=2)))
          if CNN_LSTM.dropout == True:
              model.add(Dropout(drop_rate_1))
          model.add(TimeDistributed(Flatten())) 
@@ -129,6 +154,8 @@ class CNN_LSTM(EncDec):
        
          return model
      
+   
+    
     def multi_head(X_train, y_train, config): 
         toIndex = EncDec.toIndex
         n_steps = EncDec.n_steps

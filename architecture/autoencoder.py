@@ -42,6 +42,7 @@ class autoencoderLSTM(EncDec):
     file = HtmlFile.HtmlFile()
     hidden_size = 16
     code_size = 4
+    n_input = EncDec.n_steps
     
     print("testing class")
     @classmethod

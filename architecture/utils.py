@@ -32,23 +32,9 @@ def get_sigma(vector, mu):
      return sigma
     
 #https://scipy-lectures.org/intro/numpy/operations.html
-def get_error_vector(X_val, X_pred): 
-    fo = open("demofile4.txt", "w")
-    for el in X_pred:
-        fo.write("X_pred " +  str(el))
-    fo.close()
-    X_val = process_predict(X_val)
-    X_pred = process_predict(X_pred)   
-    
-    print("Xval shape", X_val.shape)
-    print("X_pred shape", X_pred.shape)
-    f = open("demofile3.txt", "w")
-    for el_pred, el_val in zip(X_pred, X_val):
-        f.write("X_pred " +  str(el_pred) + "\n")
-        f.write("X_val" + str(el_val) + "\n")
-    f.close()
-    x_input = X_val
-    x_output = X_pred
+def get_error_vector(x_input, x_output): 
+    x_input = process_predict(x_input)
+    x_output = process_predict(x_output)   
     
     return np.abs(x_output - x_input)
     
@@ -90,9 +76,10 @@ def get_threshold(X_val_2_D, score):
 
 def process_predict(X_pred): 
     if len(X_pred.shape) == 3:
+       print("xpred 3d")
        X_pred = np.squeeze(X_pred)
        X_pred = X_pred[:,-1]
-       X_pred = X_pred.reshape(X_pred.shape[0], 1)
+    X_pred = X_pred.reshape(X_pred.shape[0], 1)
     return X_pred
 def plot_training_losses(history):
     fig, ax = plt.subplots(figsize=(14,6), dpi=80)
@@ -122,7 +109,21 @@ def plot_bins_loss(y_pred, ytrain, scored):
     encoded = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
     return encoded
 
-
+def plot_series(title, dates, y_true, y_pred):
+    y_true = process_predict(y_true)
+    y_pred = process_predict(y_pred)   
+    fig, ax = plt.subplots(figsize=(14,6), dpi=80)
+    plt.plot(dates, y_true, 'b', label="Validation")
+    plt.plot(dates, y_pred, 'r', label="Prediction")
+    ax.set_title(title, fontsize=16)
+    ax.set_ylabel('Value')
+    ax.set_xlabel('Dates')
+    ax.legend(loc='upper right')
+    #plt.show()
+    tmpfile = BytesIO()
+    fig.savefig(tmpfile, format='png')
+    encoded = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
+    return encoded
 
 
 def concatenate_features(df_list_1, df_list_2):
@@ -149,10 +150,15 @@ def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, 
 
 
 
-def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None):
-    if form == "4D":
+def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None, dates=False):
+    data = pd.DataFrame()
+    if isinstance(raw, pd.DataFrame) and dates == False and 'date' in raw.columns:
         raw = raw.drop(['date'], axis = 1)
         data = series_to_supervised(raw, n_in=n_input)
+    else:
+        data = raw
+    
+    if form == "4D":
         print("shape data", data.shape)
         data = np.array(data.iloc[:, :n_input])
      
@@ -175,8 +181,6 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
         if len(input_data.shape) == 3:
             y_train = input_data[:, -1, :]
         else:
-            raw = raw.drop(['date'], axis=1)
-            data = series_to_supervised(raw, n_in=n_input)
             data = data.values
       
             y_train = data[:, :n_features]
@@ -190,9 +194,8 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
         return y_train
     
     elif form == "3D":
-        raw = raw.drop(['date'], axis = 1)
-        data = series_to_supervised(raw, n_in=timesteps)
         data = np.array(data.iloc[:, :timesteps])
+        print("data", data.shape)
     
         #normalize data
         scaler = MinMaxScaler()
@@ -224,9 +227,9 @@ def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
     return y_train_full
 
 
-def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None):       
+def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None, dates=False):       
     if validation == True:
-        return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+        return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features, dates=dates)
                
     X_train = preprocess(raw, timesteps, form = input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
   
@@ -249,17 +252,31 @@ def split_features(n_features, X_train):
         
     return input_data
 
-#LSTM
-def generate_sets_days(normal_sequence, timesteps, validation=True):
-    X_train_D = normal_sequence
+def generate_sets_days(X_train_D, n_input, validation=True):
+    X_train = pd.DataFrame()
+ 
+    X_train = preprocess_set(X_train_D, n_input)
+    X_train_D = X_train_D.iloc[n_input:]   
+   
     
-    size_X_train_D = X_train_D.shape[0]
-    size_train = round(size_X_train_D*0.8)
-    if validation == True:
+    if validation == True: 
+        size_X_train = X_train.shape[0]
+        print("size_X_train", size_X_train)
+        size_train = round(size_X_train*0.8)
+        print("size train", size_train)
+        X_val = X_train.iloc[size_train:, :]
+        X_train = X_train.iloc[:size_train, :]
+        print("size validation", X_val.shape[0])
+        size_val = round(0.5*X_val.shape[0])
+        print("size_val", size_val)
+          
+        X_val_1_D = X_val.iloc[:size_val, :]
+        X_val_2_D = X_val.iloc[size_val:, :]
+        
+    
         X_train = X_train_D.iloc[:size_train, :]
         X_val = X_train_D.iloc[size_train:, :]
-      
-        size_val = round(0.5*X_val.shape[0])
+  
        
         X_val_1_D = X_val.iloc[:size_val, :]
         print("X_val_1_D min days", min(X_val_1_D['date']))
@@ -270,38 +287,48 @@ def generate_sets_days(normal_sequence, timesteps, validation=True):
         
     
         return X_train, X_val_1_D, X_val_2_D
-    return X_train
+    return X_train_D
 
 
-
-def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None):
-     size_X_train_D = X_train_D.shape[0]
-     print("size_X_train_D", size_X_train_D)
-     size_train = round(size_X_train_D*0.8)
+def preprocess_set(set_D, n_input, dates = False):
+     raw = set_D
+     if dates == False:
+         raw = set_D.drop(['date'], axis = 1)
      
-     X_train = X_train_D.iloc[:size_train, :]
-     X_val = X_train_D.iloc[size_train:, :]
-            
+     set_X = series_to_supervised(raw, n_in=n_input)
+     return set_X
+ 
+def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None, dates=False):
+     X_train = pd.DataFrame()
+     X_train = preprocess_set(X_train_D, n_input, dates=dates)
+         
+     size_X_train = X_train.shape[0]
+     print("size_X_train", size_X_train)
+     size_train = round(size_X_train*0.8)
+     print("size train", size_train)
+     X_val = X_train.iloc[size_train:, :]
+     X_train = X_train.iloc[:size_train, :]
+     print("size validation", X_val.shape[0])
      size_val = round(0.5*X_val.shape[0])
      print("size_val", size_val)
        
-     X_val_1_D = X_val.iloc[:size_val, :]
-     X_val_2_D = X_val.iloc[size_val:, :]
-     print("shape x_val", X_val_1_D.shape)
+     X_val_1 = X_val.iloc[:size_val, :]
+     X_val_2 = X_val.iloc[size_val:, :]
     
-     X_train = preprocess(X_train_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     X_val_1 = preprocess(X_val_1_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     X_val_2 = preprocess(X_val_2_D, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     print("size X_train", X_train.shape)
+     Xtrain = preprocess(X_train, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     Xval_1 = preprocess(X_val_1, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     Xval_2 = preprocess(X_val_2, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
             
      
-     y_train = preprocess(X_train_D, timesteps, input_data = X_train, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     y_val_1 = preprocess(X_val_1_D, timesteps, input_data = X_val_1, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     y_val_2 = preprocess(X_val_2_D, timesteps, input_data = X_val_2, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_train = preprocess(X_train, timesteps, input_data = X_train, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_val_1 = preprocess(X_val_1, timesteps, input_data = X_val_1, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_val_2 = preprocess(X_val_2, timesteps, input_data = X_val_2, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      
      print("X_val_1", X_val_1.shape)
      print("y_val_1", y_val_1.shape)
      
-     return X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2
+     return Xtrain, y_train, Xval_1, y_val_1, Xval_2, y_val_2
  
 def save_parameters(mu, sigma, timesteps, min_th, filename):
     param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'min_th':min_th}
@@ -359,14 +386,14 @@ def detect_anomalies(X_test, y_test, X_test_D, h5_filename, choose_th=None):
         anomalies_th = choose_th
         
     print("treshold", anomalies_th)
-    
-    
-    #Xtest = preprocess(X_test, timesteps)
-  
+      
     print("Predict")
     y_pred = model.predict(X_test)
 
     predict = pd.DataFrame()
+    
+    print("y_test shape", y_test.shape)
+    print("y_pred shape", y_pred.shape)
     
     vector = get_error_vector(y_test, y_pred)
     vector = np.squeeze(vector)
@@ -393,6 +420,7 @@ def detect_anomalies(X_test, y_test, X_test_D, h5_filename, choose_th=None):
     predict['date'] = dates
     return predict
 
+
 def test_2d():
     col_1 = [x for x in range(20)]
     col_2 = [x for x in range(20)]
@@ -403,4 +431,4 @@ def test_2d():
     #comeu 4 porque e' o n_input e o n_input nao considera os nans
     return True
 
-    
+  
