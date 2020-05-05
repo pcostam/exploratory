@@ -165,7 +165,12 @@ class EncDec(object):
                 es = EarlyStopping(monitor='val_loss', mode='min', min_delta=0.001, patience=5, verbose=1)
                 mc = ModelCheckpoint(best_h5_filename, monitor='val_loss', mode='min', save_best_only=True)
                 
+             
                 if validation:
+                    if EncDec.split:
+                        X_train = utils.split_features(EncDec.n_features, X_train)
+                        X_val_1 = utils.split_features(EncDec.n_features, X_val_1)
+                        
                     history = model.fit(X_train, y_train, validation_data=(X_val_1, y_val_1), epochs=200, batch_size=batch_size, callbacks=[es, mc]).history
                 else:
                     history = model.fit(X_train, y_train, epochs=200, batch_size=batch_size, callbacks=[es, mc]).history
