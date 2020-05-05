@@ -75,11 +75,13 @@ def get_threshold(X_val_2_D, score):
     return min_th
 
 def process_predict(X_pred): 
+    n_features = X_pred.shape[2]
+    timesteps = X_pred.timesteps[1]
     if len(X_pred.shape) == 3:
        print("xpred 3d")
        X_pred = np.squeeze(X_pred)
-       X_pred = X_pred[:,-1]
-    X_pred = X_pred.reshape(X_pred.shape[0], 1)
+       X_pred = X_pred[:,:n_features]
+    X_pred = X_pred.reshape(X_pred.shape[0]*timesteps, n_features)
     return X_pred
 def plot_training_losses(history):
     fig, ax = plt.subplots(figsize=(14,6), dpi=80)
@@ -98,11 +100,10 @@ def plot_training_losses(history):
     
     return encoded
     
-def plot_bins_loss(y_pred, ytrain, scored):
-    scored['Loss_mae'] = np.mean(np.abs(y_pred-ytrain), axis = 1)
+def plot_bins_loss(loss):
     figure = plt.figure(figsize=(16,9), dpi=80)
     plt.title('Loss Distribution', fontsize=16)
-    sns.distplot(scored['Loss_mae'], bins=20, kde=True, color='blue')
+    sns.distplot(loss, bins=20, kde=True, color='blue')
     #plt.show()
     tmpfile = BytesIO()
     figure.savefig(tmpfile, format='png')
@@ -126,6 +127,7 @@ def plot_series(title, dates, y_true, y_pred):
     return encoded
 
 
+  
 def concatenate_features(df_list_1, df_list_2):
     list_result = list()
     for i in range(0, len(df_list_1)):
@@ -140,10 +142,11 @@ def concatenate_features(df_list_1, df_list_2):
 
 def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, n_input=None, n_features=None):        
     print("generate_full")
+    print("n_features", n_features)
     X_train_full = preprocess(raw, timesteps, form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
     print("X_train_full shape>>>", X_train_full.shape)
     if output_form == "3D":
-        y_train_full = X_train_full[:, -1, :]
+        y_train_full = X_train_full[:, :n_features, :]
     else:
         y_train_full = generate_full_y_train(raw, n_input, timesteps, n_features)
     return X_train_full, y_train_full
@@ -157,10 +160,11 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
         data = series_to_supervised(raw, n_in=n_input)
     else:
         data = raw
+    print("DATA>>>", data)
     
     if form == "4D":
         print("shape data", data.shape)
-        data = np.array(data.iloc[:, :n_input])
+        data = np.array(data.iloc[:, :n_input*n_features])
      
         #normalize data
         scaler = MinMaxScaler()
@@ -169,9 +173,10 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
         #for CNN there is the need to reshape de 2-d np array to a 4-d np array [samples, timesteps, features]
         #[batch_size, height, width, depth]
         #[samples, subsequences, timesteps, features]
-        rows = data.shape[0] * data.shape[1]
-        new_n_seq = round(rows/(data.shape[0]*timesteps*n_features))
-
+        cells = data.shape[0] * data.shape[1]
+        samples = data.shape[0]
+        new_n_seq = cells//(samples*timesteps*n_features)
+        
         n_seq = new_n_seq
         data = np.reshape(data, (data.shape[0], n_seq, timesteps, n_features))
     
@@ -179,7 +184,8 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
        
     elif form == "2D":
         if len(input_data.shape) == 3:
-            y_train = input_data[:, -1, :]
+            print("2D input_data", input_data.shape)
+            y_train = input_data[:, :n_features, :]
         else:
             data = data.values
       
@@ -194,7 +200,7 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
         return y_train
     
     elif form == "3D":
-        data = np.array(data.iloc[:, :timesteps])
+        data = np.array(data.iloc[:, :timesteps*n_features])
         print("data", data.shape)
     
         #normalize data
@@ -202,7 +208,7 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
         data = scaler.fit_transform(data)
 
         #for lstm there is the need to reshape de 2-d np array to a 3-d np array [samples, timesteps, features]
-        data = data.reshape((data.shape[0], data.shape[1],1))
+        data = data.reshape((data.shape[0], timesteps, n_features))
 
         return data
 
@@ -237,12 +243,14 @@ def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validatio
         y_train = X_train
     if output_form == "2D":
         y_train = preprocess(raw, timesteps, form = output_form, input_data = X_train, n_seq=n_seq, n_input=n_input, n_features=n_features)
-    print("y_train shape", y_train.shape)
-    print("X_train shape", X_train.shape)
+    print("generate_sets y_train shape", y_train.shape)
+    print("generte_sets X_train shape", X_train.shape)
     return X_train, y_train, None, None, None, None
     
 
 def split_features(n_features, X_train):
+    print("split_features")
+    print("n_features", n_features)
     input_data = list()
  
     for i in range(n_features):
@@ -252,42 +260,41 @@ def split_features(n_features, X_train):
         
     return input_data
 
-def generate_sets_days(X_train_D, n_input, validation=True):
+def generate_sets_days(X_train_D, n_input, validation=True):   
     X_train = pd.DataFrame()
- 
-    X_train = preprocess_set(X_train_D, n_input)
-    X_train_D = X_train_D.iloc[n_input:]   
-   
-    
-    if validation == True: 
+    X_train = preprocess_set(X_train_D, n_input, dates=True)
+    if validation == True:   
+       
         size_X_train = X_train.shape[0]
-        print("size_X_train", size_X_train)
+       
         size_train = round(size_X_train*0.8)
         print("size train", size_train)
         X_val = X_train.iloc[size_train:, :]
         X_train = X_train.iloc[:size_train, :]
+        #a partir daqui da errado
         print("size validation", X_val.shape[0])
         size_val = round(0.5*X_val.shape[0])
         print("size_val", size_val)
           
-        X_val_1_D = X_val.iloc[:size_val, :]
-        X_val_2_D = X_val.iloc[size_val:, :]
+        X_val_1 = X_val.iloc[:size_val, :]
+        X_val_2 = X_val.iloc[size_val:, :]
         
-    
-        X_train = X_train_D.iloc[:size_train, :]
-        X_val = X_train_D.iloc[size_train:, :]
-  
-       
-        X_val_1_D = X_val.iloc[:size_val, :]
-        print("X_val_1_D min days", min(X_val_1_D['date']))
-        print("X_val_1_D max days", max(X_val_1_D['date']))
-        X_val_2_D = X_val.iloc[size_val:, :]
-        print("X_val_2_D days min", min(X_val_2_D['date']))
-        print("X_val_2_D max days", max(X_val_2_D['date']))
+        print("X_val_1", X_val_1.columns)
+        print("date", X_val_1['var2(t)'] )
+        print("X_val_1_D min days", min(X_val_1['var2(t)']))
+        print("X_val_1_D max days", max(X_val_1['var2(t)']))
+        print("X_val_2_D days min", min(X_val_2['var2(t)']))
+        print("X_val_2_D max days", max(X_val_2['var2(t)']))
+        X_val_1.rename(columns={"var2(t)":"date"}, inplace=True)
+        X_val_2.rename(columns={"var2(t)":"date"}, inplace=True)
+        X_train.rename(columns={"var2(t)":"date"}, inplace=True)
         
+     
     
-        return X_train, X_val_1_D, X_val_2_D
-    return X_train_D
+        return X_train_D, X_val_1, X_val_2
+    
+    X_train.rename(columns={"var2(t)":"date"}, inplace=True)
+    return X_train
 
 
 def preprocess_set(set_D, n_input, dates = False):
@@ -303,19 +310,14 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
      X_train = preprocess_set(X_train_D, n_input, dates=dates)
          
      size_X_train = X_train.shape[0]
-     print("size_X_train", size_X_train)
      size_train = round(size_X_train*0.8)
-     print("size train", size_train)
      X_val = X_train.iloc[size_train:, :]
      X_train = X_train.iloc[:size_train, :]
-     print("size validation", X_val.shape[0])
      size_val = round(0.5*X_val.shape[0])
-     print("size_val", size_val)
        
      X_val_1 = X_val.iloc[:size_val, :]
      X_val_2 = X_val.iloc[size_val:, :]
     
-     print("size X_train", X_train.shape)
      Xtrain = preprocess(X_train, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      Xval_1 = preprocess(X_val_1, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      Xval_2 = preprocess(X_val_2, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
@@ -431,4 +433,28 @@ def test_2d():
     #comeu 4 porque e' o n_input e o n_input nao considera os nans
     return True
 
+
+def test():
+   col_1 = [x for x in range(20)]
+   col_2 = [x for x in range(20)]
+   col_3 = [x for x in range(20,40)]
+   col_4 = [x for x in range(20)]
   
+   d = {'value': col_1, 'date':col_2}
+   d2 = {'value': col_3, 'date': col_4}
+   df = pd.DataFrame(data=d)
+   df2 = pd.DataFrame(data=d2)
+   
+   df_union = pd.concat([df, df2], axis=1)
+   col = (df_union.columns == 'date').argmax()
+   dates = df_union.iloc[:, col]
+   df_other = df_union.drop(['date'], axis=1)
+   df_other['date'] = dates
+   print("dates", dates)
+   #df_other['date'] = dates
+   print("df.columns", df_union.columns)
+   print("type", type(df_union.columns))
+   print(df.columns.where(df.columns == 'date'))
+  
+   return df_other
+   

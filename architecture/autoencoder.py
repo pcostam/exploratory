@@ -33,18 +33,8 @@ from report import image, HtmlFile, tag, Text
 
 
 class autoencoderLSTM(EncDec):
-    report_name = "autoencoderReport"
-    input_form = "3D"
-    output_form = "3D"
-    config = []
-    dropout = False
-    regularizer = "L1"
-    file = HtmlFile.HtmlFile()
-    hidden_size = 16
-    code_size = 4
-    n_input = EncDec.n_steps
-    
-    print("testing class")
+ 
+   
     @classmethod
     def get_input_form(cls):
         return cls.input_form
@@ -117,8 +107,7 @@ class autoencoderLSTM(EncDec):
         return model
 
 
-    type_model_func = autoencoder
-   
+  
     
     def hyperparam_opt():
         dim_num_lstm_layers = Integer(low=0, high=20, name='num_lstm_layers')
@@ -144,11 +133,10 @@ class autoencoderLSTM(EncDec):
         
         return dimensions,  default_parameters
     
-    dimensions,  default_parameters = hyperparam_opt()
-    config = default_parameters
-   
+    dimensions, default_parameters = hyperparam_opt()
+    
     @use_named_args(dimensions=dimensions)
-    def fitness(num_lstm_layers, batch_size, learning_rate, drop_rate_1, drop_rate_2):  
+    def fitness(num_lstm_layers, batch_size, learning_rate, drop_rate_1, drop_rate_2, num_lstm_layers_compress, regularization_strenght):  
         init = time.perf_counter()
         print("fitness>>>")
         print("number lstm layers:", num_lstm_layers)
@@ -157,24 +145,24 @@ class autoencoderLSTM(EncDec):
         print("drop rate 1:", drop_rate_1)
         print("drop rate 2:", drop_rate_2)
     
-        normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp", df_to_csv=True, start=EncDec.stime, end=EncDec.etime)
+        normal_sequence, test_sequence = generate_sequences("12", "sensortgmeasurepp",start=EncDec.stime, end=EncDec.etime, df_to_csv=True)
+        print("normal_sequence", normal_sequence.shape)
         print("stime", autoencoderLSTM.stime)
         print("etime", autoencoderLSTM.etime)
-        X_train_full, _ = utils.generate_full(normal_sequence,autoencoderLSTM.n_steps, input_form=autoencoderLSTM.input_form, output_form=autoencoderLSTM.output_form, n_seq=autoencoderLSTM.n_seq,n_input=autoencoderLSTM.n_input, n_features=autoencoderLSTM.n_features)
+        X_train_full, y_train_full = utils.generate_full(normal_sequence,autoencoderLSTM.n_steps, input_form=autoencoderLSTM.input_form, output_form=autoencoderLSTM.output_form, n_seq=autoencoderLSTM.n_seq,n_input=autoencoderLSTM.n_input, n_features=autoencoderLSTM.n_features)
         
-        config = [num_lstm_layers, batch_size, learning_rate,  drop_rate_1, drop_rate_2]
-        model = autoencoderLSTM.type_model_func(X_train_full, X_train_full, config)
+        config = [num_lstm_layers, batch_size, learning_rate,  drop_rate_1, drop_rate_2, num_lstm_layers_compress, regularization_strenght]
+        model = autoencoderLSTM.type_model_func(X_train_full, y_train_full, config)
     
-        print("total number of chunks", len(normal_sequence))
-        no_chunks = 0
-        for df_chunk in normal_sequence:
-            no_chunks += 1
-            print("number of chunks:", no_chunks)
-            X_train, y_train,  X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(df_chunk, autoencoderLSTM.n_steps, input_form=autoencoderLSTM.get_input_form(), output_form=autoencoderLSTM.get_output_form()) 
-            es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
-            hist = model.fit(X_train, X_train, validation_data=(X_val_1, y_val_1), epochs=100, batch_size= batch_size, callbacks=[es])
+  
+        
+        X_train, y_train,  X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(normal_sequence, autoencoderLSTM.n_steps, input_form=autoencoderLSTM.get_input_form(), output_form=autoencoderLSTM.get_output_form(), n_features=autoencoderLSTM.n_features, n_input=autoencoderLSTM.n_input) 
+        
+ 
+        es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
+        hist = model.fit(X_train, y_train, validation_data=(X_val_1, y_val_1), epochs=100, batch_size= batch_size, callbacks=[es])
             
-            loss = hist.history['loss'][-1]
+        loss = hist.history['loss'][-1]
     
         del model
     
@@ -189,15 +177,22 @@ class autoencoderLSTM(EncDec):
     
         return loss, diff
 
-
-
-    
+    def __init__(self):
+        autoencoderLSTM.h5_file_name = "autoencoderLSTM"
+        autoencoderLSTM.fitness_func = autoencoderLSTM.fitness
+        autoencoderLSTM.type_model_func = autoencoderLSTM.autoencoder
+        autoencoderLSTM.config = autoencoderLSTM.default_parameters
+        autoencoderLSTM.report_name = "autoencoderReport"
+        autoencoderLSTM.input_form = "3D"
+        autoencoderLSTM.output_form = "3D"
+        autoencoderLSTM.dropout = False
+        autoencoderLSTM.regularizer = "L1"
+        autoencoderLSTM.hidden_size = 16
+        autoencoderLSTM.code_size = 4
+        autoencoderLSTM.n_input = EncDec.n_steps
+        autoencoderLSTM.stime = None
+        autoencoderLSTM.etime = None
         
-    mu = 0
-    sigma = 0
-    min_th = 0
-    h5_file_name = "autoencoderLSTM"
-    fitness_func = fitness
     
     
   
