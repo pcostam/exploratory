@@ -23,22 +23,9 @@ from keras.optimizers import Adam
 from EncDec import EncDec
 from keras.callbacks import EarlyStopping
 from skopt.space import Integer, Real
-
 import tuning
 class SCB_LSTM(EncDec):
-    toIndex = dict()
-    default_parameters =[2,
-        2,
-        2,
-        2,
-        2,
-        0.1,
-        20,
-        128]
-    n_seq = 2
-    n_input = n_seq * EncDec.n_steps
-    input_form = "4D"
-    output_form = "2D"
+  
     
     def model(X_train, y_train, config):
         
@@ -90,8 +77,7 @@ class SCB_LSTM(EncDec):
     
     type_model_func = model
      
-    @classmethod
-    def hyperparam_opt(cls):
+    def hyperparam_opt():
         num_cnn_layers = Integer(low=0, high=20, name='num_cnn_layers')
         num_filters_encoder= Integer(low=0, high=5, name='num_filters_encoder')
         num_filters_decoder = Integer(low=0, high=5, name='num_filters_decoder')
@@ -118,15 +104,25 @@ class SCB_LSTM(EncDec):
         20,
         128] 
         
-        cls.dimensions = dimensions
-        cls.default_parameters = default_parameters
-        cls.config = cls.default_parameters
         
         for i in range(0, len(dimensions)):
-             cls.toIndex[dimensions[i].name] = i
+             EncDec.toIndex[dimensions[i].name] = i
+             
+        return dimensions, default_parameters
+                       
+    dimensions, default_parameters = hyperparam_opt()
+    config = default_parameters
     
-          
-SCB_LSTM.hyperparam_opt()
+    def __init__(self, report_name=None):
+        SCB_LSTM.n_seq = 2
+        SCB_LSTM.n_input = SCB_LSTM.n_seq * EncDec.n_steps
+        SCB_LSTM.input_form = "4D"
+        SCB_LSTM.output_form = "2D"
+        if report_name == None:
+            SCB_LSTM.report_name = "scb_lstm_report"
+        else:
+            SCB_LSTM.report_name = report_name
+        
         
 
     

@@ -53,7 +53,8 @@ class EncDec(object):
     stime = None
     etime = None
     split = False
-        
+    dropout = False
+    regularizer = "L1"
         
     @classmethod
     def do_train(cls, timesteps=96, cv=True, simulated = False, bayesian=False, save=True, validation=True, hidden_size=16, code_size=4):

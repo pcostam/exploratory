@@ -12,20 +12,11 @@ from keras.optimizers import Adam
 import tuning
 from skopt.space import Integer, Real
 
-class stacked_BiLSTM(Baseline):
-    toIndex = dict()
-    input_form = "3D"
-    output_form = "2D"
-    config = []
-    n_seq = None
-    n_input = Baseline.n_steps
-    config = []
-    h5_file_name = "stackedBiLSTM"
-        
+class stacked_BiLSTM(Baseline):        
     #See references
     #https://machinelearningmastery.com/how-to-develop-lstm-models-for-time-series-forecasting/
     def stacked_bilstm_model(X, y, config):
-        toIndex = stacked_BiLSTM.toIndex 
+        toIndex = Baseline.toIndex 
         num_lstm_layers = tuning.get_param(config, toIndex, "num_lstm_layers")
         learning_rate = tuning.get_param(config, toIndex, "learning_rate")
         
@@ -47,12 +38,9 @@ class stacked_BiLSTM(Baseline):
         
         return model
     
-    type_model_func = stacked_bilstm_model
+  
     
-    @classmethod
-    def hyperparam_opt(cls):
-         
-      
+    def hyperparam_opt():
         num_lstm_layers = Integer(low=0, high=5, name='num_lstm_layers') 
         learning_rate = Real(low=1e-4, high=1e-2, prior='log-uniform', name='learning_rate')
         dim_batch_size = Integer(low=64, high=128, name='batch_size')
@@ -64,12 +52,27 @@ class stacked_BiLSTM(Baseline):
         0.01,
         128] 
         
-        cls.dimensions = dimensions
-        cls.default_parameters = default_parameters
-        cls.config = cls.default_parameters
-        
+      
         for i in range(0, len(dimensions)):
-             cls.toIndex[dimensions[i].name] = i
+             Baseline.toIndex[dimensions[i].name] = i
+             
+        return dimensions, default_parameters
     
-stacked_BiLSTM.hyperparam_opt()  
+    dimensions, default_parameters = hyperparam_opt() 
+    config = default_parameters 
+    
+    def __init__(self, report_name=None):     
+        stacked_BiLSTM.input_form = "3D"
+        stacked_BiLSTM.output_form = "2D"
+        stacked_BiLSTM.n_seq = None
+        stacked_BiLSTM.n_input = Baseline.n_steps  
+        stacked_BiLSTM.h5_file_name = "stackedBiLSTM"
+        stacked_BiLSTM.type_model_func = stacked_BiLSTM.stacked_bilstm_model
+        
+        if report_name == None:
+            stacked_BiLSTM.report_name = "stacked_bilstm_report"
+        else:
+            stacked_BiLSTM.report_name = report_name
+        
+
 

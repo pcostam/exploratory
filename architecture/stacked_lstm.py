@@ -37,20 +37,10 @@ from Baseline import Baseline
 import tuning
 
 class stacked_LSTM(Baseline):
-    toIndex = dict()
-    input_form = "3D"
-    output_form = "2D"
-    num_lstm_layers = 2
-    learning_rate = 0.01
-    batch_size = 128
-    n_seq = None
-    n_input = Baseline.n_steps
-    config = []
-    h5_file_name = "stackedLSTM"
-   
-    
+  
     def stacked_lstm_model(X, y, config):
-        toIndex = stacked_LSTM.toIndex 
+        toIndex = Baseline.toIndex 
+        print("To Index", toIndex)
         num_lstm_layers = tuning.get_param(config, toIndex, "num_lstm_layers")
         learning_rate = tuning.get_param(config, toIndex, "learning_rate")
         
@@ -70,12 +60,9 @@ class stacked_LSTM(Baseline):
         
         return model
     
-    type_model_func = stacked_lstm_model
-    
-    @classmethod
-    def hyperparam_opt(cls):
-         
-      
+  
+ 
+    def hyperparam_opt():
         num_lstm_layers = Integer(low=0, high=5, name='num_lstm_layers') 
         learning_rate = Real(low=1e-4, high=1e-2, prior='log-uniform', name='learning_rate')
         dim_batch_size = Integer(low=64, high=128, name='batch_size')
@@ -87,61 +74,33 @@ class stacked_LSTM(Baseline):
         0.01,
         128] 
         
-        cls.dimensions = dimensions
-        cls.default_parameters = default_parameters
-        cls.config = cls.default_parameters
-        
+
         for i in range(0, len(dimensions)):
-             cls.toIndex[dimensions[i].name] = i
+             Baseline.toIndex[dimensions[i].name] = i
+             
+        return dimensions, default_parameters
     
-stacked_LSTM.hyperparam_opt()  
-"""
-    def test():
-        stime ="01-01-2017 00:00:00"
-        etime ="01-03-2017 00:00:00"
+    dimensions, default_parameters = hyperparam_opt()  
+    config = default_parameters
     
-        normal_sequence, _ = generate_sequences("12", "sensortgmeasurepp",start=stime, end=etime, simulated=False, df_to_csv=True)
-        print("test normal_sequence", normal_sequence[0].shape)
-    
-            
-        clear_session()
-        #tensorflow.reset_default_graph()
-            
-        #1 minute frequency size of sliding window 1440- day
-        #it already seems unfeasible
-        #week 10080
-        #15 min frequency a day is 96
-        timesteps = 3
+    def __init__(self, report_name=None):
+          stacked_LSTM.input_form = "3D"
+          stacked_LSTM.output_form = "2D"
+          stacked_LSTM.num_lstm_layers = 2
+          stacked_LSTM.learning_rate = 0.01
+          stacked_LSTM.batch_size = 128
+          stacked_LSTM.n_seq = None
+          stacked_LSTM.n_input = Baseline.n_steps
+          stacked_LSTM.h5_file_name = "stackedLSTM"
+          stacked_LSTM.type_model_func = stacked_LSTM.stacked_lstm_model
+          
+          if report_name == None:
+             stacked_LSTM.report_name = "stacked_lstm_report"
+          else:
+             stacked_LSTM.report_name = report_name
         
-        num_lstm_layers = 2
-        learning_rate = 0.01
-        batch_size = 128
-        n_features = 1
         
-        #in chunks
-        X_train_full, y_train_full = utils.generate_full(normal_sequence,timesteps)
-        print("X_train_full shape", X_train_full.shape)
-        print("y_train_full shape", y_train_full.shape)
-        model = stacked_lstm(X_train_full, num_lstm_layers, learning_rate)
         
-        number_of_chunks = 0
-        history = list()
-        is_best_model = False
-        validation = True
-      
-        for df_chunk in normal_sequence:
-            number_of_chunks += 1
-            print("number of chunks:", number_of_chunks)
-            X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2  = utils.generate_sets(df_chunk, timesteps, validation=validation)  
-            es = EarlyStopping(monitor='val_loss', mode='min', verbose=1)
-            history = model.fit(X_train, y_train, epochs=20,validation_data=(X_val_1, y_val_1),  batch_size=batch_size, callbacks=[es]).history
-         
-        #print("X_val_1", X_val_1.shape)
-        X_test = np.array([0.2, 0.5, 0.67])
-        X_test = X_test.reshape((1, timesteps, n_features))
-        #X_pred = model.predict(X_val_1)
-        
-        #print("X_pred", X_pred)
-    """
+
           
           

@@ -24,11 +24,7 @@ from EncDec import EncDec
 from keras.callbacks import EarlyStopping
 
 class CNN_BiLSTM(EncDec):
-    config =  [1, 1, 20, 1, 2, 128, 1e-2, 0.5, 0.5]
-    n_seq = 2
-    n_input = n_seq * EncDec.n_steps
-    input_form = "4D"
-    output_form = "2D"
+  
     
     @classmethod
     def get_n_seq(cls):
@@ -90,8 +86,8 @@ class CNN_BiLSTM(EncDec):
     type_model_func = model
     
     
-    def hyperparam_opt(timesteps): 
-         dimensions, default_parameters = tuning.get_param_conv_layers(timesteps)
+    def hyperparam_opt(timesteps, n_input): 
+         dimensions, default_parameters = tuning.get_param_conv_layers(timesteps, n_input)
       
          dimensions += tuning.get_param_encdec(timesteps)[0]
      
@@ -102,8 +98,27 @@ class CNN_BiLSTM(EncDec):
      
          for i in range(0, len(dimensions)):
              EncDec.toIndex[dimensions[i].name] = i
+             
+         return dimensions, default_parameters
      
-    hyperparam_opt(EncDec.n_steps)
+   
+    
+    def __init__(self, report_name=None):
+          CNN_BiLSTM.config =  [1, 1, 20, 1, 2, 128, 1e-2, 0.5, 0.5]
+          CNN_BiLSTM.input_form = "4D"
+          CNN_BiLSTM.output_form = "2D"
+          if report_name != None:
+            CNN_BiLSTM.report_name = report_name
+          else:
+            CNN_BiLSTM.report_name = "Cnn_bilstm_report"
+            
+         
+            
+    
+    n_seq = 7
+    n_input = n_seq * EncDec.n_steps
+    dimensions, default_parameters = hyperparam_opt(EncDec.n_steps, n_input)
+        
     
     @use_named_args(dimensions=EncDec.dimensions)
     def fitness(num_pooling_layers, stride_size, kernel_size, no_filters, num_encdec_layers, batch_size, learning_rate, drop_rate_1):  
