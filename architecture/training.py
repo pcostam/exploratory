@@ -14,35 +14,37 @@ from architecture.stacked_bilstm import stacked_BiLSTM
 
 
 models = ["autoencoder LSTM", "CNN-BiLSTM", "CNN-LSTM", "SCB-LSTM", "stacked BiLSTM", "stacked LSTM"]
-def training(type_model="all", timesteps=96, simulated = False, bayesian=False, save=True, validation=True, hidden_size=16, code_size=4, cnn_lstm_type = "multi-channel"):
-    if type_model == "all":
+def training(model_name ="all", type_model = "multi-channel", timesteps=96, simulated = False, bayesian=False, save=True, validation=True, hidden_size=16, code_size=4):
+    if model_name == "all":
         for model in models:
             print("dotrain")
             #do_train
-    if type_model == "autoencoder LSTM":
+    if model_name == "autoencoder LSTM":
          autoencoder = autoencoderLSTM()
          autoencoder.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, hidden_size=hidden_size, code_size=code_size)
     
-    elif type_model == "CNN-LSTM":
-         cnn_lstm = CNN_LSTM(cnn_lstm_type)
+    elif model_name == "CNN-LSTM":
+         cnn_lstm = CNN_LSTM(type_model=type_model, model_name="CNN-LSTM")
          cnn_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     
-    elif type_model == "CNN-BiLSTM":
-         cnn_lstm = CNN_LSTM(cnn_lstm_type, decoder="LSTM")
+    elif model_name == "CNN-BiLSTM":
+         cnn_lstm = CNN_LSTM(type_model=type_model, model_name="CNN-BiLSTM")
          cnn_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     
          #cnn_bilstm = CNN_BiLSTM()
          #cnn_bilstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     
-    elif type_model == "SCB-LSTM":
-          scb_lstm = SCB_LSTM()
-          scb_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
-      
-    elif type_model == "stacked LSTM":
+    elif model_name == "SCB-LSTM":
+          #scb_lstm = SCB_LSTM()
+          #scb_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
+          cnn_lstm = CNN_LSTM(type_model=type_model, model_name="SCB-LSTM")
+          cnn_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
+    
+    elif model_name == "stacked LSTM":
           stacked_lstm = stacked_LSTM()
           stacked_lstm.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
 
-    elif type_model == "stacked BiLSTM":
+    elif model_name == "stacked BiLSTM":
           stacked_bilstm = stacked_BiLSTM()
           stacked_bilstm.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     else:

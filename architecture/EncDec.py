@@ -249,14 +249,7 @@ class EncDec(object):
                     plot_timeseries.append((title, dates, y_val_2[:,n], y_pred[:,n]))   
                     
               
-                for element in plot_timeseries:
-                    title = element[0]
-                    dates = element[1]
-                    y_val = element[2]
-                    y_pred_el = element[3]
-                    encoded = utils.plot_series(title, dates, y_val, y_pred_el, cls.n_steps, cls.n_features)
-                    img = image.Image(title, encoded)
-                    cls.file.append(img)
+            
                 
                     
                 vector = utils.get_error_vector(y_val_2, y_pred, cls.n_steps, cls.n_features)
@@ -292,9 +285,17 @@ class EncDec(object):
                 dates = test_dates
                 y_pred = model.predict(X_test)
                 title = "Time series test sequence"
-                encoded = utils.plot_series(title, dates, y_test, y_pred,  cls.n_steps, cls.n_features)
-                img = image.Image(title, encoded)
-                cls.file.append(img)
+                for n in range(cls.n_features):
+                    plot_timeseries.append((title, dates, y_test[:,n], y_pred[:,n]))   
+                    
+                for element in plot_timeseries:
+                    title = element[0]
+                    dates = element[1]
+                    y_val = element[2]
+                    y_pred_el = element[3]
+                    encoded = utils.plot_series(title, dates, y_val, y_pred_el, cls.n_steps, cls.n_features)
+                    img = image.Image(title, encoded)
+                    cls.file.append(img)
                 
                 y_pred = model.predict(X_test)
                 prediction = utils.detect_anomalies(X_test, y_test, test_sequence, cls.h5_file_name, cls.n_steps, cls.n_features)

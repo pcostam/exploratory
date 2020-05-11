@@ -11,6 +11,9 @@ from io import BytesIO
 import base64
 from report import Text
 from scipy.stats import boxcox, yeojohnson
+from scipy.stats import norm
+from unsupervised.Pvalue import Pvalue
+from unsupervised.Stats import Stats
 
 def goodness_of_fit(file, scores, alpha=0.05):
     distributions = ['norm', 'gamma']
@@ -36,7 +39,11 @@ def goodness_of_fit(file, scores, alpha=0.05):
             text = "Failed test to distribution %s" % dist
             print(text)
             file.append(Text.Text(text))
-            
+            if dist == "norm":
+                 scores, mu, std = transform_norm(scores, type_transform="yeojohnson")
+                 crit, pvalue = Pvalue.pvalue_norm(mu, std, percentage=0.02)
+                 Stats.check_for_normality(scores)
+                 
         stats = [item["stat_D"] for item in results]
         p_value = [item["p-value"] for item in results]
         distribution = [item["distribution"] for item in results]
@@ -72,27 +79,29 @@ def ecdf(data):
 
 
 def transform_norm(data, type_transform="yeojohnson"):
-    mu, std = 0 
+    mu = 0
+    std = 0
+    new_data = []
     if type_transform == "box-cox":
         #box-cox transformation
         print("Minimum value:" , min(data))
-        
         shift = 0
         minimum = min(data)
         if minimum < 0:
             shift = round(abs(minimum))
      
         posdata = [x + shift for x in data] 
-        
-        posdata, lmda = boxcox(posdata)
+        new_data, lmda = boxcox(posdata)
       
-        mu, std = norm.fit(posdata)
    
     elif type_transform == "yeojohnson":
         #Yeo-Johnson power transformation
-        datayeo, lmbda = yeojohnson(data)
-        mu, std = norm.fit(datayeo)
+        new_data, lmbda = yeojohnson(data)
+    else:
+        raise ValueError("No such transformation")
         
-    return mu, std
+    mu, std = norm.fit(new_data)
+        
+    return new_data, mu, std
 
 

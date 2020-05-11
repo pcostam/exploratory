@@ -16,12 +16,12 @@ import datetime
 import base64
 from io import BytesIO
 from scipy.stats import norm
-from Pvalue import Pvalue
-from Sensor import Sensor
+from unsupervised.Pvalue import Pvalue
+from unsupervised.Sensor import Sensor
 from scipy.stats import boxcox, yeojohnson
 import time
 from report import image, HtmlFile, tag, Text
-from Network import Network
+from base.Network import Network
  
 class Stats(object):
     flowSensorsIds = [1, 2, 4, 6, 9, 10, 12, 14]

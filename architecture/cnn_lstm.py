@@ -38,7 +38,8 @@ from keras.optimizers import Adam
 from EncDec import EncDec
 from preprocessing.series import downsample, rolling_out_cv, generate_total_sequence, select_data, csv_to_df
 from keras.layers import Bidirectional
-
+from architecture.cnn_biLSTM import CNN_BiLSTM
+from architecture.scb_lstm import SCB_LSTM
 #see https://machinelearningmastery.com/how-to-develop-deep-learning-models-for-univariate-time-series-forecasting/
 #https://towardsdatascience.com/get-started-with-using-cnn-lstm-for-forecasting-6f0f4dde5826
 #https://blog.keras.io/building-autoencoders-in-keras.html
@@ -68,13 +69,6 @@ class CNN_LSTM(EncDec):
     def get_output_form(cls):
         return cls.output_form
     
-    def decoder_BiLstm(model, n_nodes, num_encdec_layers):
-        model.add(Bidirectional(LSTM(n_nodes, activation='relu', return_sequences=True)))
-        for i in range(0, num_encdec_layers):
-            name = 'layer_bilstm_decoder_{0}'.format(i+1)
-            model.add(Bidirectional(LSTM(n_nodes, activation='relu', return_sequences=True, name=name)))
-        model.add(Bidirectional(LSTM(n_nodes, activation='relu', return_sequences=False)))
-        return model 
     
     def decoder_Lstm(model, n_nodes, num_encdec_layers):
         model.add(LSTM(n_nodes, activation='relu', return_sequences=True))
@@ -144,8 +138,9 @@ class CNN_LSTM(EncDec):
          if CNN_LSTM.decoder == "LSTM":
              model = CNN_LSTM.decoder_Lstm(model, n_nodes, num_encdec_layers)
          elif CNN_LSTM.decoder == "BiLSTM":
-             model = CNN_LSTM.decoder_BiLstm(model, n_nodes, num_encdec_layers)
-             
+             model = CNN_BiLSTM.decoder_BiLstm(model, n_nodes, num_encdec_layers)
+         elif CNN_LSTM.decoder == "SCB-LSTM":
+             model = SCB_LSTM.decoder_SCB_lstm(model, n_nodes, num_encdec_layers)
          if CNN_LSTM.dropout == True:
              model.add(Dropout(drop_rate_1))
          model.add(Dense(n_features))
@@ -249,11 +244,23 @@ class CNN_LSTM(EncDec):
     dimensions, default_parameters = hyperparam_opt(EncDec.n_steps, n_input)
     config = default_parameters
     
-    def __init__(self, type_model, decoder="LSTM", report_name=None):  
+    def __init__(self, type_model="multi-channel", model_name="CNN-LSTM", report_name=None):  
         CNN_LSTM.config = CNN_LSTM.default_parameters
-        CNN_LSTM.type_model = "multi-channel"
-        CNN_LSTM.decoder = decoder
+        print("model_name", model_name)
+        if model_name == "CNN-LSTM":
+            CNN_LSTM.encoder = "CNN"
+            CNN_LSTM.decoder = "LSTM"
         
+        elif model_name == "CNN-BiLSTM":
+                CNN_LSTM.encoder = "CNN"
+                CNN_LSTM.decoder = "BiLSTM"
+                
+        elif model_name == "SCB-LSTM":
+              CNN_LSTM.encoder = "CNN"
+              CNN_LSTM.decoder = "SCB-LSTM"
+        else:
+            raise ValueError("No such model name")
+            
         type_model_func = None
         if report_name != None:
             CNN_LSTM.report_name = report_name
@@ -262,11 +269,11 @@ class CNN_LSTM(EncDec):
             CNN_LSTM.type_model_func = CNN_LSTM.multi_head
             EncDec.split = True
             if report_name == None:
-                CNN_LSTM.report_name = "CNN_LSTM_multi_head_Report"
+                CNN_LSTM.report_name = "CNN_LSTM_multi_head_Report" + model_name
         elif type_model == "multi-channel":
             CNN_LSTM.type_model_func = CNN_LSTM.multi_channel
             if report_name == None:
-                CNN_LSTM.report_name = "CNN_LSTM_multi_channel_Report"
+                CNN_LSTM.report_name = "CNN_LSTM_multi_channel_Report" + model_name
         else:
             raise ValueError('No such architecture')
             

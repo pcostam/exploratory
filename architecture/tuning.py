@@ -8,6 +8,7 @@ from skopt.space import Integer, Real
 from skopt.callbacks import DeltaYStopper
 from keras.backend import clear_session
 from skopt import gp_minimize
+#https://medium.com/@crawftv/parameter-hyperparameter-tuning-with-bayesian-optimization-7acf42d348e1
 
 #num_pooling_layers, stride_size, kernel_size, no_filters
 def get_param_conv_layers(timesteps, n_input):
