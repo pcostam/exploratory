@@ -123,6 +123,9 @@ class SCB_LSTM(EncDec):
         else:
             SCB_LSTM.report_name = report_name
         
+        for i in range(0, len(SCB_LSTM.dimensions)):
+             SCB_LSTM.toIndex[SCB_LSTM.dimensions[i].name] = i
+        
         
 
     

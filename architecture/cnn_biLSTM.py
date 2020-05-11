@@ -64,6 +64,8 @@ class CNN_BiLSTM(EncDec):
         #model.add(Reshape((1,2))) 
         model.add(Bidirectional(LSTM(n_nodes, activation='relu', return_sequences=True)))
         model.add(Bidirectional(LSTM(n_nodes, activation='relu', return_sequences=False)))
+
+        
         """
         for i in range(num_encdec_layers):
             name = 'layer_lstm_decoder_{0}'.format(i+1)
@@ -101,7 +103,11 @@ class CNN_BiLSTM(EncDec):
              
          return dimensions, default_parameters
      
-   
+       
+    n_seq = 7
+    n_input = n_seq * EncDec.n_steps
+    dimensions, default_parameters = hyperparam_opt(EncDec.n_steps, n_input)
+    config = default_parameters
     
     def __init__(self, report_name=None):
           CNN_BiLSTM.config =  [1, 1, 20, 1, 2, 128, 1e-2, 0.5, 0.5]
@@ -112,13 +118,11 @@ class CNN_BiLSTM(EncDec):
           else:
             CNN_BiLSTM.report_name = "Cnn_bilstm_report"
             
+          for i in range(0, len(CNN_BiLSTM.dimensions)):
+              CNN_BiLSTM.toIndex[CNN_BiLSTM.dimensions[i].name] = i
          
             
-    
-    n_seq = 7
-    n_input = n_seq * EncDec.n_steps
-    dimensions, default_parameters = hyperparam_opt(EncDec.n_steps, n_input)
-        
+
     
     @use_named_args(dimensions=EncDec.dimensions)
     def fitness(num_pooling_layers, stride_size, kernel_size, no_filters, num_encdec_layers, batch_size, learning_rate, drop_rate_1):  

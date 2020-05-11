@@ -37,6 +37,8 @@ from keras.backend import clear_session
 from keras.optimizers import Adam
 from EncDec import EncDec
 from preprocessing.series import downsample, rolling_out_cv, generate_total_sequence, select_data, csv_to_df
+from keras.layers import Bidirectional
+
 #see https://machinelearningmastery.com/how-to-develop-deep-learning-models-for-univariate-time-series-forecasting/
 #https://towardsdatascience.com/get-started-with-using-cnn-lstm-for-forecasting-6f0f4dde5826
 #https://blog.keras.io/building-autoencoders-in-keras.html
@@ -66,6 +68,22 @@ class CNN_LSTM(EncDec):
     def get_output_form(cls):
         return cls.output_form
     
+    def decoder_BiLstm(model, n_nodes, num_encdec_layers):
+        model.add(Bidirectional(LSTM(n_nodes, activation='relu', return_sequences=True)))
+        for i in range(0, num_encdec_layers):
+            name = 'layer_bilstm_decoder_{0}'.format(i+1)
+            model.add(Bidirectional(LSTM(n_nodes, activation='relu', return_sequences=True, name=name)))
+        model.add(Bidirectional(LSTM(n_nodes, activation='relu', return_sequences=False)))
+        return model 
+    
+    def decoder_Lstm(model, n_nodes, num_encdec_layers):
+        model.add(LSTM(n_nodes, activation='relu', return_sequences=True))
+        for i in range(0, num_encdec_layers):
+             name = 'layer_lstm_decoder_{0}'.format(i+1)
+             model.add(LSTM(n_nodes, activation='relu', return_sequences=True, name=name))
+        model.add(LSTM(n_nodes, activation='relu', return_sequences=False))
+        return model
+    
     def unit_BN(model, config, is_input=False):
         toIndex = EncDec.toIndex
         n_stride = tuning.get_param(config, toIndex, "stride_size")
@@ -89,25 +107,23 @@ class CNN_LSTM(EncDec):
     
     
     def multi_channel(X_train, y_train, config):
-         toIndex = EncDec.toIndex
+         toIndex = CNN_LSTM.toIndex
          n_steps = EncDec.n_steps
          num_pooling_layers = tuning.get_param(config, toIndex, "num_pooling_layers")
          n_stride = tuning.get_param(config, toIndex, "stride_size")
          n_stride = 2
          n_stride = (n_stride, )
-         print("stride size", n_stride)
+      
          n_kernel = tuning.get_param(config, toIndex, "kernel_size")
-         print("n_kernel", n_kernel)
          n_filters = tuning.get_param(config, toIndex, "no_filters")
-         print("n_filters", n_filters)
+      
          num_encdec_layers = tuning.get_param(config, toIndex, "num_encdec_layers")
          learning_rate = tuning.get_param(config, toIndex, "learning_rate")
          drop_rate_1 = tuning.get_param(config, toIndex, "drop_rate_1")
          n_nodes = 16
          
          n_features = X_train.shape[3]
-         print("n_features", n_features)
-         
+    
          model = Sequential()
          model.add(TimeDistributed(Conv1D(filters=n_filters, strides=n_stride, kernel_size=(n_kernel,), activation='relu'), input_shape=(None,n_steps,n_features)))
          if CNN_LSTM.batch_normalization:
@@ -125,11 +141,11 @@ class CNN_LSTM(EncDec):
          if CNN_LSTM.dropout == True:
              model.add(Dropout(drop_rate_1))
          model.add(TimeDistributed(Flatten()))  
-         model.add(LSTM(n_nodes, activation='relu', return_sequences=True))
-         for i in range(0, num_encdec_layers):
-             name = 'layer_lstm_decoder_{0}'.format(i+1)
-             model.add(LSTM(n_nodes, activation='relu', return_sequences=True, name=name))
-         model.add(LSTM(n_nodes, activation='relu', return_sequences=False))
+         if CNN_LSTM.decoder == "LSTM":
+             model = CNN_LSTM.decoder_Lstm(model, n_nodes, num_encdec_layers)
+         elif CNN_LSTM.decoder == "BiLSTM":
+             model = CNN_LSTM.decoder_BiLstm(model, n_nodes, num_encdec_layers)
+             
          if CNN_LSTM.dropout == True:
              model.add(Dropout(drop_rate_1))
          model.add(Dense(n_features))
@@ -149,11 +165,14 @@ class CNN_LSTM(EncDec):
    
     
     def multi_head(X_train, y_train, config): 
-        toIndex = EncDec.toIndex
+        toIndex = CNN_LSTM.toIndex
         n_steps = EncDec.n_steps
         num_pooling_layers = tuning.get_param(config, toIndex, "num_pooling_layers")
         stride_size = tuning.get_param(config, toIndex, "stride_size")
         n_kernel = tuning.get_param(config, toIndex, "kernel_size")
+        print("config",config)
+        print("toIndex", toIndex)
+        print("kernel size", n_kernel)
         n_filters = tuning.get_param(config, toIndex, "no_filters")
         num_encdec_layers = tuning.get_param(config, toIndex, "num_encdec_layers")
         learning_rate = tuning.get_param(config, toIndex, "learning_rate")
@@ -221,14 +240,20 @@ class CNN_LSTM(EncDec):
      
          for i in range(0, len(dimensions)):
              EncDec.toIndex[dimensions[i].name] = i
-             
+    
          return dimensions, default_parameters
      
    
+    n_seq = 7
+    n_input = n_seq * EncDec.n_steps
+    dimensions, default_parameters = hyperparam_opt(EncDec.n_steps, n_input)
+    config = default_parameters
     
-    def __init__(self, type_model, report_name=None):  
+    def __init__(self, type_model, decoder="LSTM", report_name=None):  
         CNN_LSTM.config = CNN_LSTM.default_parameters
         CNN_LSTM.type_model = "multi-channel"
+        CNN_LSTM.decoder = decoder
+        
         type_model_func = None
         if report_name != None:
             CNN_LSTM.report_name = report_name
@@ -254,13 +279,13 @@ class CNN_LSTM(EncDec):
         CNN_LSTM.use_cross_validation = True
         CNN_LSTM.no_calls_fitness = 0
         
+        for i in range(0, len(CNN_LSTM.dimensions)):
+             CNN_LSTM.toIndex[CNN_LSTM.dimensions[i].name] = i
+        
 
     
               
-    n_seq = 7
-    n_input = n_seq * EncDec.n_steps
-    dimensions, default_parameters = hyperparam_opt(EncDec.n_steps, n_input)
-        
+  
     
     @use_named_args(dimensions=dimensions)
     def fitness(num_pooling_layers, stride_size, kernel_size, no_filters, num_encdec_layers, batch_size, learning_rate, drop_rate_1):  

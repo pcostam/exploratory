@@ -55,6 +55,7 @@ class EncDec(object):
     split = False
     dropout = False
     regularizer = "L1"
+    toIndex = dict()
         
     @classmethod
     def do_train(cls, timesteps=96, cv=True, simulated = False, bayesian=False, save=True, validation=True, hidden_size=16, code_size=4):
@@ -85,11 +86,11 @@ class EncDec(object):
             sequence_2 = generate_total_sequence("11", "sensortgmeasurepp",start=stime, end=etime)
             
             config = cls.config
+          
             if bayesian == True:
                 fitness = cls.fitness_func
                 dimensions = cls.dimensions
                 default_parameters = cls.default_parameters
-                print("EncDec dimensions", EncDec.dimensions)
                 param = tuning.do_bayesian_optimization(fitness, dimensions, default_parameters)
                 cls.config = param
             
@@ -108,7 +109,7 @@ class EncDec(object):
                 train_chunks_all.append(train_chunks)
                 test_chunks_all.append(test_chunks)
             
-            
+          
             k = len(train_chunks)
             print("number of partitions", k)
             cls.file.append(Text.Text("Number of partitions:" + str(k)))
@@ -117,15 +118,9 @@ class EncDec(object):
             for item in train_chunks_all:
                 print("item:", type(item[0]))
                 
-            for i in range(0, k):
-                    to_concat = [item[i] for item in train_chunks_all] 
-                    union_normal_sequences = pd.concat(to_concat, axis=1) 
-                    union_normal_sequences =  union_normal_sequences.drop_duplicates("date", "first")
-                    col = (union_normal_sequences.columns == 'date').argmax()
-                    dates = union_normal_sequences.iloc[:, col]
-                    union_normal_sequences = union_normal_sequences.drop(['date'], axis=1)
-                    union_normal_sequences['date'] = dates                 
-                    train_chunks.append(union_normal_sequences)
+            train_chunks = utils.join_partitions_features(train_chunks_all, k)
+            test_chunks = utils.join_partitions_features(test_chunks_all, k)
+       
             
             EncDec.n_features = len(train_chunks[0].columns) - 1
             print("TRAIN_CHUNKS", train_chunks[0].columns)
@@ -148,6 +143,9 @@ class EncDec(object):
                
                 X_train_full, y_train_full = utils.generate_full(normal_sequence,timesteps, input_form=cls.input_form, output_form=cls.output_form, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)
               
+                print("config", config)
+                print("kernel size", config[2])
+            
                 model = cls.type_model_func(X_train_full, y_train_full, config)
                 batch_size = tuning.get_param(config, cls.toIndex, "batch_size")
                 number_of_chunks = 0
@@ -162,7 +160,9 @@ class EncDec(object):
                 if is_best_model:
                     model = load_model(best_h5_filename)
                 number_of_chunks += 1
-                X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(normal_sequence, timesteps,input_form = cls.input_form, output_form = cls.output_form, validation=validation, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)  
+                X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2  = utils.generate_sets(normal_sequence, timesteps,input_form = cls.input_form, output_form = cls.output_form, validation=validation, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)  
+                dates_train, dates_val_1, dates_val_2 = utils.generate_days(normal_sequence, cls.n_input)
+               
                 es = EarlyStopping(monitor='val_loss', mode='min', min_delta=0.001, patience=5, verbose=1)
                 mc = ModelCheckpoint(best_h5_filename, monitor='val_loss', mode='min', save_best_only=True)
                 
@@ -201,20 +201,20 @@ class EncDec(object):
                     
                 y_pred = model.predict(X_train_full)
               
-                y_pred = utils.process_predict(y_pred)
+                y_pred = utils.process_predict(y_pred, cls.n_features, cls.n_steps)
                 y_pred = pd.DataFrame(y_pred)
                 scored = pd.DataFrame(index=y_pred.index)
-                ytrain = utils.process_predict(y_train_full)
+                ytrain = utils.process_predict(y_train_full, cls.n_features, cls.n_steps)
                 scored['Loss_mae'] = np.mean(np.abs(y_pred-ytrain), axis = 1)
-                scored['Loss_ae'] = np.abs(y_pred-ytrain)
-                print("loss ae shape", scored['Loss_ae'].shape)
+                #scored['Loss_ae'] = np.abs(y_pred-ytrain)
+                #print("loss ae shape", scored['Loss_ae'].shape)
                 print("loss mae shape", scored['Loss_mae'].shape)
-                encoded = utils.plot_bins_loss(scored['Loss_ae'])
+                encoded = utils.plot_bins_loss(scored['Loss_mae'])
                 img = image.Image("Training losses graph", encoded)
                 cls.file.append(img)
                 
-                goodness_of_fit(cls.file, scored['Loss_ae'], alpha=0.05)
-                img = ecdf(scored['Loss_ae'])
+                goodness_of_fit(cls.file, scored['Loss_mae'], alpha=0.05)
+                img = ecdf(scored['Loss_mae'])
                 img = image.Image("Cumulative Density Function", encoded)
                 cls.file.append(img)
                 
@@ -222,62 +222,58 @@ class EncDec(object):
                 #calculate loss on the validation set to get miu and sigma values
                 y_pred = model.predict(X_val_1)
    
-                vector = utils.get_error_vector(y_val_1, y_pred)
+                vector = utils.get_error_vector(y_val_1, y_pred, cls.n_steps, cls.n_features)
                 vector = np.squeeze(vector)    
                 plt.hist(list(vector), bins=20)
                 plt.show()
-                    
-                vector = vector.reshape(vector.shape[0], 1)
                 
-                X_train_D, X_val_1_D, X_val_2_D = utils.generate_sets_days(normal_sequence, cls.n_input)
-                print("X_train shape", X_train.shape)
-                print("X_train_D", X_train_D.shape)
-                print("n_input", cls.n_input)
-               
-                dates = X_val_1_D['date']
+                if len(vector.shape) == 1:
+                    vector = vector.reshape(vector.shape[0], 1)
                 
+                
+                
+                dates = dates_val_1
+             
                 title = "Time series validation set 1"
-                encoded = utils.plot_series(title, dates, y_val_1, y_pred)
-                img = image.Image(title, encoded)
-                cls.file.append(img)
-                
-                    
-                mu = utils.get_mu(vector)
             
-                sigma = utils.get_sigma(vector, mu)
-              
+                plot_timeseries = list()
+                for n in range(cls.n_features):
+                    plot_timeseries.append((title, dates, y_val_1[:,n], y_pred[:,n]))   
+                mu = utils.get_mu(vector)
+                sigma = utils.get_sigma(vector, mu)  
                 score = utils.anomaly_score(mu, sigma, vector)
-                
-                dates = X_val_2_D['date']
+                dates = dates_val_2
                 y_pred = model.predict(X_val_2) 
                 title = "Time series validation set 2"
-                print("dates", len(dates))
-                print("y_val_2 shape", y_val_2.shape)
-                print("y_pred", y_pred.shape)
-                encoded = utils.plot_series(title, dates, y_val_2, y_pred)
-                img = image.Image(title, encoded)
-                cls.file.append(img)
+                for n in range(cls.n_features):
+                    plot_timeseries.append((title, dates, y_val_2[:,n], y_pred[:,n]))   
+                    
+              
+                for element in plot_timeseries:
+                    title = element[0]
+                    dates = element[1]
+                    y_val = element[2]
+                    y_pred_el = element[3]
+                    encoded = utils.plot_series(title, dates, y_val, y_pred_el, cls.n_steps, cls.n_features)
+                    img = image.Image(title, encoded)
+                    cls.file.append(img)
                 
-                vector = utils.get_error_vector(y_val_2, y_pred)
-             
+                    
+                vector = utils.get_error_vector(y_val_2, y_pred, cls.n_steps, cls.n_features)
                 vector = utils.np.squeeze(vector)
                 score = utils.anomaly_score(mu, sigma, vector)
-                
-               
-                
-    
-                min_th = utils.get_threshold(X_val_2_D, score)
             
+                min_th = utils.get_threshold(dates_val_2, score)
                 dates_list = list()
                 #positive class is anomaly
                 FP = 0
                 TP = 0
                 FN = 0
-                i = 0
+                i = 0         
                 for sc in score:
                     if sc > min_th:
                          FP += 1
-                         date = X_val_2_D['date'].iloc[i]
+                         date = dates_val_2.iloc[i]
                          dates_list.append(date)
                     i += 1
                 
@@ -291,17 +287,17 @@ class EncDec(object):
                  
                 X_test, y_test, _, _, _, _ = utils.generate_sets(test_sequence, timesteps,input_form =cls.input_form, output_form = cls.output_form, validation=False, n_seq=cls.n_seq, n_input=cls.n_input, n_features=cls.n_features)
                 
-                X_test_D = utils.generate_sets_days(test_sequence, cls.n_input, validation=False)
-                dates = X_test_D['date']
-                print("dates", len(dates))
+             
+                test_dates = utils.generate_days(test_sequence, cls.n_input, validation=False)
+                dates = test_dates
                 y_pred = model.predict(X_test)
                 title = "Time series test sequence"
-                encoded = utils.plot_series(title, dates, y_test, y_pred)
+                encoded = utils.plot_series(title, dates, y_test, y_pred,  cls.n_steps, cls.n_features)
                 img = image.Image(title, encoded)
                 cls.file.append(img)
                 
                 y_pred = model.predict(X_test)
-                prediction = utils.detect_anomalies(X_test, y_test, test_sequence, cls.h5_file_name)
+                prediction = utils.detect_anomalies(X_test, y_test, test_sequence, cls.h5_file_name, cls.n_steps, cls.n_features)
                 events = network.loadEvents()
                 cls.file.append(Text.Text("Number of events year:" + str(len(events))))
                 

@@ -28,8 +28,11 @@ def training(type_model="all", timesteps=96, simulated = False, bayesian=False, 
          cnn_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     
     elif type_model == "CNN-BiLSTM":
-         cnn_bilstm = CNN_BiLSTM()
-         cnn_bilstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
+         cnn_lstm = CNN_LSTM(cnn_lstm_type, decoder="LSTM")
+         cnn_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
+    
+         #cnn_bilstm = CNN_BiLSTM()
+         #cnn_bilstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     
     elif type_model == "SCB-LSTM":
           scb_lstm = SCB_LSTM()
@@ -42,4 +45,5 @@ def training(type_model="all", timesteps=96, simulated = False, bayesian=False, 
     elif type_model == "stacked BiLSTM":
           stacked_bilstm = stacked_BiLSTM()
           stacked_bilstm.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
-    
+    else:
+        raise ValueError("No such architecture")

@@ -10,6 +10,7 @@ import matplotlib.pyplot as plt
 from io import BytesIO
 import base64
 from report import Text
+from scipy.stats import boxcox, yeojohnson
 
 def goodness_of_fit(file, scores, alpha=0.05):
     distributions = ['norm', 'gamma']
@@ -77,11 +78,11 @@ def transform_norm(data, type_transform="yeojohnson"):
         print("Minimum value:" , min(data))
         
         shift = 0
-        minimum = min(sample)
+        minimum = min(data)
         if minimum < 0:
             shift = round(abs(minimum))
      
-        posdata = [x + shift for x in sample] 
+        posdata = [x + shift for x in data] 
         
         posdata, lmda = boxcox(posdata)
       
