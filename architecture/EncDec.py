@@ -58,7 +58,7 @@ class EncDec(object):
     toIndex = dict()
         
     @classmethod
-    def do_train(cls, timesteps=96, cv=True, simulated = False, bayesian=False, save=True, validation=True, hidden_size=16, code_size=4):
+    def do_train(cls, sensors=["12"], iterative=False, timesteps=96, cv=True, simulated = False, bayesian=False, save=True, validation=True, hidden_size=16, code_size=4):
             network = Network("infraquinta")
             path_report = "F:/manual/Tese/exploratory/wisdom/reports_files/report_models/%s.html" % cls.report_name
     
@@ -78,13 +78,16 @@ class EncDec(object):
             cls.file.append(Text.Text("Regularization:" + str(cls.regularizer)))
             cls.file.append(Text.Text("Timesteps:" + str(timesteps)))
            
-        
-            normal_sequence, test_sequence = generate_sequences("12", "sensortgmeasurepp",start=stime, end=etime, simulated=simulated, df_to_csv=True)
-            normal_sequence_2, test_sequence_2 = generate_sequences("11", "sensortgmeasurepp", start=stime, end=etime, simulated=simulated, df_to_csv=True)
+            all_normal_sequence = list()
+            all_test_sequence = list()
+            all_sequence = list()
+            for sensor_id in sensors:
+                normal_sequence, test_sequence = generate_sequences(sensor_id, "sensortgmeasurepp",start=stime, end=etime, simulated=simulated, df_to_csv=True)
+                all_normal_sequence.append(normal_sequence)
+                all_test_sequence.append(test_sequence)
+                sequence = generate_total_sequence(sensor_id, "sensortgmeasurepp",start=stime, end=etime, simulated=simulated)
+                all_sequence.append(sequence)
            
-            sequence = generate_total_sequence("12", "sensortgmeasurepp",start=stime, end=etime)
-            sequence_2 = generate_total_sequence("11", "sensortgmeasurepp",start=stime, end=etime)
-            
             config = cls.config
           
             if bayesian == True:
@@ -98,51 +101,59 @@ class EncDec(object):
             
             train_chunks, test_chunks = list(), list()
             train_chunks_all, test_chunks_all = list(), list()
-            #3 MESES
+            
+            time = None
+            if simulated:
+                time = 'time'
+            else:
+                time = 'date'
+                
+            #4 MESES
             n_train = 8640
             #cross validation
             if cv:
-                train_chunks, test_chunks = split_train_test(normal_sequence, sequence, n_train)
-                train_chunks_all.append(train_chunks)
-                test_chunks_all.append(test_chunks)
-                train_chunks, test_chunks = split_train_test(normal_sequence_2, sequence, n_train)
-                train_chunks_all.append(train_chunks)
-                test_chunks_all.append(test_chunks)
-            
+                for i in range(len(sensors)):
+                    train_chunks, test_chunks = split_train_test(all_normal_sequence[i], all_sequence[i], n_train, time=time)
+                    train_chunks_all.append(train_chunks)
+                    test_chunks_all.append(test_chunks)
+                    
           
             k = len(train_chunks)
             print("number of partitions", k)
             cls.file.append(Text.Text("Number of partitions:" + str(k)))
             
             train_chunks = list()
-            for item in train_chunks_all:
-                print("item:", type(item[0]))
+            
+            to_exclude = []
+            if simulated:
+                to_exclude = ['time', 'leak']
+            else:
+                to_exclude = ['date']
                 
-            train_chunks = utils.join_partitions_features(train_chunks_all, k)
-            test_chunks = utils.join_partitions_features(test_chunks_all, k)
+            train_chunks = utils.join_partitions_features(train_chunks_all, k, to_exclude)
+            test_chunks = utils.join_partitions_features(test_chunks_all, k, to_exclude)
        
             
             EncDec.n_features = len(train_chunks[0].columns) - 1
-            print("TRAIN_CHUNKS", train_chunks[0].columns)
+     
             run_losses = list()
             run_val_losses = list()
             for i in range(k):  
        
                 normal_sequence = train_chunks[i]
-                print("normal_sequence dates", train_chunks[i]['date'])
                 test_sequence = test_chunks[i]
                 size_train = len(normal_sequence)
                 print("Training size:", size_train)
                 cls.file.append(Text.Text("Training size:" + str(size_train)))
-                start_train = min(normal_sequence['date'])
-                end_train = max(normal_sequence['date'])
+                start_train = min(normal_sequence[time])
+                end_train = max(normal_sequence[time])
                 cls.file.append(Text.Text("Date train events %s to %s" % 
                                               (start_train, end_train)))
             
                
                
                 X_train_full, y_train_full = utils.generate_full(normal_sequence,timesteps, input_form=cls.input_form, output_form=cls.output_form, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)
-              
+               
                 print("config", config)
                 print("kernel size", config[2])
             
@@ -150,18 +161,13 @@ class EncDec(object):
                 batch_size = tuning.get_param(config, cls.toIndex, "batch_size")
                 number_of_chunks = 0
                 history = list()
-                is_best_model = False
-            
-                if simulated == True:
-                    validation = False
-                    
-                best_h5_filename = "best_" + cls.h5_file_name + ".h5"
-                
-                if is_best_model:
-                    model = load_model(best_h5_filename)
+           
+                best_h5_filename = "best_" + cls.h5_file_name + ".h5"    
+                #model = load_model(best_h5_filename)
                 number_of_chunks += 1
                 X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2  = utils.generate_sets(normal_sequence, timesteps,input_form = cls.input_form, output_form = cls.output_form, validation=validation, n_seq=cls.n_seq,n_input=cls.n_input, n_features=cls.n_features)  
-                dates_train, dates_val_1, dates_val_2 = utils.generate_days(normal_sequence, cls.n_input)
+                print("time", time)
+                dates_train, dates_val_1, dates_val_2 = utils.generate_days(normal_sequence, cls.n_input, time)
                
                 es = EarlyStopping(monitor='val_loss', mode='min', min_delta=0.001, patience=5, verbose=1)
                 mc = ModelCheckpoint(best_h5_filename, monitor='val_loss', mode='min', save_best_only=True)
@@ -175,8 +181,7 @@ class EncDec(object):
                     history = model.fit(X_train, y_train, validation_data=(X_val_1, y_val_1), epochs=200, batch_size=batch_size, callbacks=[es, mc]).history
                 else:
                     history = model.fit(X_train, y_train, epochs=200, batch_size=batch_size, callbacks=[es, mc]).history
-                is_best_model = True
-                
+               
                 plot_model(model, to_file='model.png')
                 
                 loss = history['loss'][-1]
@@ -200,11 +205,15 @@ class EncDec(object):
                 
                     
                 y_pred = model.predict(X_train_full)
-              
-                y_pred = utils.process_predict(y_pred, cls.n_features, cls.n_steps)
+                y_pred = utils.process_predict(y_pred,  cls.n_steps, cls.n_features)
                 y_pred = pd.DataFrame(y_pred)
                 scored = pd.DataFrame(index=y_pred.index)
-                ytrain = utils.process_predict(y_train_full, cls.n_features, cls.n_steps)
+                ytrain = utils.process_predict(y_train_full,  cls.n_steps, cls.n_features)
+                struct = {'y_pred': y_pred, 'ytrain': ytrain}
+                dbfile = open('struct', 'ab')   
+                # source, destination 
+                pickle.dump(struct, dbfile)                      
+                dbfile.close() 
                 scored['Loss_mae'] = np.mean(np.abs(y_pred-ytrain), axis = 1)
                 #scored['Loss_ae'] = np.abs(y_pred-ytrain)
                 #print("loss ae shape", scored['Loss_ae'].shape)
@@ -230,7 +239,8 @@ class EncDec(object):
                 if len(vector.shape) == 1:
                     vector = vector.reshape(vector.shape[0], 1)
                 
-                
+               
+    
                 
                 dates = dates_val_1
              
@@ -241,20 +251,23 @@ class EncDec(object):
                     plot_timeseries.append((title, dates, y_val_1[:,n], y_pred[:,n]))   
                 mu = utils.get_mu(vector)
                 sigma = utils.get_sigma(vector, mu)  
-                score = utils.anomaly_score(mu, sigma, vector)
+                score = utils.anomaly_score(mu, sigma, vector, cls.n_features)
                 dates = dates_val_2
+                print("type dates", type(dates))
+                print("size dates", dates.shape)
                 y_pred = model.predict(X_val_2) 
+                print("X_val_2 shape", X_val_2.shape)
+                print("y_pred", y_pred.shape)
                 title = "Time series validation set 2"
                 for n in range(cls.n_features):
                     plot_timeseries.append((title, dates, y_val_2[:,n], y_pred[:,n]))   
                     
-              
-            
-                
-                    
+      
                 vector = utils.get_error_vector(y_val_2, y_pred, cls.n_steps, cls.n_features)
                 vector = utils.np.squeeze(vector)
-                score = utils.anomaly_score(mu, sigma, vector)
+                print("vector shape", vector.shape)
+                print("y_val_2 shape", y_val_2.shape)
+                score = utils.anomaly_score(mu, sigma, vector, cls.n_features)
             
                 min_th = utils.get_threshold(dates_val_2, score)
                 dates_list = list()
@@ -262,13 +275,16 @@ class EncDec(object):
                 FP = 0
                 TP = 0
                 FN = 0
-                i = 0         
+                index_date = 0    
+                print("len score", score.shape)
                 for sc in score:
                     if sc > min_th:
                          FP += 1
-                         date = dates_val_2.iloc[i]
+                         print("index", index_date)
+                         print("size dates", dates.shape)
+                         date = dates.iloc[index_date]
                          dates_list.append(date)
-                    i += 1
+                    index_date += 1
                 
                 #question? division by zero
                 fbs = f_beta_score(TP, FP, FN, beta=0.1)
@@ -276,12 +292,12 @@ class EncDec(object):
                 
                 
                 if save == True:
-                    utils.save_parameters(mu, sigma, timesteps, min_th, EncDec.h5_file_name)
+                    utils.save_parameters(mu, sigma, timesteps, min_th, cls.h5_file_name)
                  
                 X_test, y_test, _, _, _, _ = utils.generate_sets(test_sequence, timesteps,input_form =cls.input_form, output_form = cls.output_form, validation=False, n_seq=cls.n_seq, n_input=cls.n_input, n_features=cls.n_features)
                 
              
-                test_dates = utils.generate_days(test_sequence, cls.n_input, validation=False)
+                test_dates = utils.generate_days(test_sequence, cls.n_input, time, validation=False)
                 dates = test_dates
                 y_pred = model.predict(X_test)
                 title = "Time series test sequence"
@@ -298,16 +314,17 @@ class EncDec(object):
                     cls.file.append(img)
                 
                 y_pred = model.predict(X_test)
-                prediction = utils.detect_anomalies(X_test, y_test, test_sequence, cls.h5_file_name, cls.n_steps, cls.n_features)
+                prediction = utils.detect_anomalies(X_test, y_test, test_sequence, cls.h5_file_name, cls.n_steps, cls.n_features, time=time)
                 events = network.loadEvents()
                 cls.file.append(Text.Text("Number of events year:" + str(len(events))))
                 
                 
-                old_start = min(test_sequence['date'])
-                old_end = max(test_sequence['date'])
+                old_start = min(test_sequence[time])
+                old_end = max(test_sequence[time])
                 
                 start = change_format(old_start, '%Y-%m-%d %H:%M:%S', '%d-%m-%Y %H:%M:%S')
                 end = change_format(old_end, '%Y-%m-%d %H:%M:%S', '%d-%m-%Y %H:%M:%S')
+                
                 events = network.select_events(start, end)
                 cls.file.append(Text.Text("Number of events during %s to %s: %s" % 
                                           (start, end, len(events))))
@@ -318,7 +335,7 @@ class EncDec(object):
                 FN = 0
                 TN = 0
                 detected_events = dict()
-                for date in prediction['date']:
+                for date in prediction[time]:
                     for event in events:
                       date = pd.to_datetime(date)
                       if date >= event.getStart() and date <= event.getEnd():

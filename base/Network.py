@@ -4,22 +4,63 @@ Created on Sat Feb 22 12:41:53 2020
 
 @author: anama
 """
-import mysql.connector
-from Event import Event
-import datetime
+from base.Event import Event
+from datetime import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd
 import base64
 from io import BytesIO
+from base import database
+import pickle
+from base.Sensor import Sensor
+from preprocessing.series import preprocess_simulation
 class Network:
-  
-    sensors = list()
-    events = list()
- 
     def __init__(self, name):
         self.name = name
- 
+        self.events = list()
+        self.flowSensors = list()
+        self.pressureSensors = list()
+        self.sensors = list()
+
+        if name == "infraquinta":
+            self.flowSensorsIds = [1, 2, 4, 6, 9, 10, 12, 14]
+            self.pressureSensorsIds = [3, 5, 7, 8, 11, 13, 15]
+            self.network_type = "tg"
+            #in order
+            self.sensorNeighbors =  {1:[10,14,12], 2:[4,6,9,12], 3:[7,5,8,11], 4:[6,2,9,12], 5:[7,3,9,11], 
+                                     6:[4,2,9,12], 7:[5,3,8,11], 8:[11,13,5,7], 9:[12, 14, 4, 6], 10:[1, 14, 12], 
+                                     11:[13, 8, 15, 5, 7], 12:[14, 9, 4, 6], 13:[15, 11, 8], 14:[10, 12], 15:[13,11,8]}
+         
+            network_type = self.network_type
+            for sensor_id in self.flowSensorsIds:
+                neighbors = self.sensorNeighbors[sensor_id]
+                sensor_type = "flow"
+                sensor = Sensor(sensor_id, neighbors,sensor_type, network_type)  
+                self.flowSensors.append(sensor)
+                
+            for sensor_id in self.pressureSensorsIds:
+                neighbors = self.sensorNeighbors[sensor_id]
+                sensor_type = "pressure"
+                sensor = Sensor(sensor_id, neighbors,sensor_type, network_type)  
+                self.pressureSensors.append(sensor)
+                
+            self.sensors += self.flowSensors
+            self.sensors += self.pressureSensors
+          
+    def getSensorNeighbors(self):
+        return self.sensorNeighbors
+    
+    def getSensorNeighborsById(self, idSensor):
+        return self.getSensorNeighbors()[idSensor]
+    
+
+    def getSensorsIds(self):
+        return self.flowSensorsIds + self.pressureSensorIds
+    
+    def getPressureSensorsIds(self):
+        return self.pressureSensorsIds
+    
     def getEvents(self):
         return self.events
     
@@ -31,8 +72,19 @@ class Network:
     
     def addEvent(self, event):
         self.events.append(event)
-        
-    def addAllEvents(self, db, cursor):
+    
+    def addSimulatedEvents(self, df):
+        isLeak = False
+        for index, row in df.iterrows():
+            if row['leak'] == 1:
+                isLeak = True
+                start = row['time']
+            if isLeak and row['leak'] == 0:
+                isLeak = False
+                end = df['time'].iloc[index]
+                self.addEvent(Event(start, end, "fuga"))
+   
+    def addAllEvents(self, db, cursor, dump=True):
         query = """
         SELECT descricao, date FROM ordemdata ORDER BY date ASC
         """
@@ -65,10 +117,23 @@ class Network:
                         Network.find_open(i, aux)
                     """
                         
-                except IndexError as error:
+                except IndexError:
                     # Output expected IndexErrors.
                     pass
-
+        if dump:
+            self.dumpEvents()
+    
+    def loadEvents(self):
+        path = "F:/manual/Tese/exploratory/wisdom/base/network_events"
+        with open (path, 'rb') as fp:
+           self.events = pickle.load(fp)
+        return self.events
+        
+    def dumpEvents(self):
+        path = "F:/manual/Tese/exploratory/wisdom/base/network_events"
+        with open(path, 'wb') as fp:
+            pickle.dump(self.events, fp)
+   
     def date_N_days_ago(date, days):
         return date - datetime.timedelta(days=days) 
 
@@ -101,13 +166,23 @@ class Network:
                 return self.events[i]
         return None
     
- 
+    def select_events(self, start, end):
+        start = datetime.strptime(start, '%d-%m-%Y %H:%M:%S')
+        end = datetime.strptime(end, '%d-%m-%Y %H:%M:%S')
+        size = len(self.events)
+        sevents = list()
+        for i in range(0, size):
+            estart = self.events[i].getStart()
+            eend = self.events[i].getEnd()
+         
+            if start <= estart and end >= eend:
+                sevents.append(self.events[i])
+        return sevents
+                
+        
     def plot_timeline_events(self, begin_date, end_date, dates_events):
-        print("PLOT")
         fig, ax = plt.subplots(figsize=(10, 6))
         fig.autofmt_xdate()
-        print("begin_date", begin_date)
-        print("end_date", end_date)
         
         ax.spines['right'].set_visible(False)
         ax.spines['top'].set_visible(False)
@@ -141,5 +216,20 @@ class Network:
         
         plt.show()
         return encoded
-		     
-                
+    
+def test():
+    #db, cursor = database.make_connection("infraquinta")
+    network = Network("infraquinta")
+    #network.addAllEvents(db, cursor)
+    events = network.loadEvents()
+    
+    new_df = preprocess_simulation('12', 18000)
+    network.addSimulatedEvents(new_df)
+    print("Number of events:", network.countEvent())
+    
+    start = "19-10-2017 04:45:00"  
+    end = "30-12-2017 23:45:00"
+    new_events = network.select_events(start, end)
+    print("number new events", len(new_events))
+   
+    

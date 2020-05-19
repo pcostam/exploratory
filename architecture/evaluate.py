@@ -130,4 +130,13 @@ def f_beta_score(TP, FP, FN, beta=0.5):
         return 0
     return (1+beta**2)*((precision*recall)/((beta**2)*precision)+recall)
 
-    
+def precision(TP, FP):
+    return TP/TP+FP
+
+def recall(TP, FN):
+    return TP/TP+FN
+
+def f1_score(TP, FP, FN):
+    p = precision(TP, FP)
+    r = recall(TP, FN)
+    return 2*(p*r)/(p+r)

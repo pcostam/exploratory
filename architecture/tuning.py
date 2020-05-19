@@ -9,7 +9,7 @@ from skopt.callbacks import DeltaYStopper
 from keras.backend import clear_session
 from skopt import gp_minimize
 #https://medium.com/@crawftv/parameter-hyperparameter-tuning-with-bayesian-optimization-7acf42d348e1
-
+#https://www.kdnuggets.com/2019/06/automate-hyperparameter-optimization.html
 #num_pooling_layers, stride_size, kernel_size, no_filters
 def get_param_conv_layers(timesteps, n_input):
     dim_num_pooling_layers = Integer(low=0, high=2, name='num_pooling_layers')

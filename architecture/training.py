@@ -18,7 +18,7 @@ def training(model_name ="all", type_model = "multi-channel", timesteps=96, simu
     if model_name == "all":
         for model in models:
             print("dotrain")
-            #do_train
+            
     if model_name == "autoencoder LSTM":
          autoencoder = autoencoderLSTM()
          autoencoder.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, hidden_size=hidden_size, code_size=code_size)
@@ -30,22 +30,17 @@ def training(model_name ="all", type_model = "multi-channel", timesteps=96, simu
     elif model_name == "CNN-BiLSTM":
          cnn_lstm = CNN_LSTM(type_model=type_model, model_name="CNN-BiLSTM")
          cnn_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
-    
-         #cnn_bilstm = CNN_BiLSTM()
-         #cnn_bilstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
-    
+ 
     elif model_name == "SCB-LSTM":
-          #scb_lstm = SCB_LSTM()
-          #scb_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
           cnn_lstm = CNN_LSTM(type_model=type_model, model_name="SCB-LSTM")
           cnn_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     
     elif model_name == "stacked LSTM":
           stacked_lstm = stacked_LSTM()
-          stacked_lstm.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
+          stacked_lstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
 
     elif model_name == "stacked BiLSTM":
           stacked_bilstm = stacked_BiLSTM()
-          stacked_bilstm.do_train(timesteps=3, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
+          stacked_bilstm.do_train(timesteps=timesteps, simulated = simulated, bayesian=bayesian, save=save, validation=validation)
     else:
         raise ValueError("No such architecture")

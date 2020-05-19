@@ -39,11 +39,12 @@ def get_error_vector(x_input, x_output, timesteps, n_features):
     return np.abs(x_output - x_input)
     
  # calculate anormaly score (X-mu)^Tsigma^(-1)(X-mu)
-def anomaly_score(mu, sigma, X):
+def anomaly_score(mu, sigma, X, n_features):
     # D- number of features
     #sigma DxD matrix
     #mu vector D-dimensional
     #X- error vector D-dimensional
+    X = X.reshape(X.shape[0], n_features)
     sigma_inv= np.linalg.inv(sigma)
     a = np.zeros(X.shape[0])
     for i in range(0, X.shape[0]):
@@ -64,9 +65,6 @@ def process_input(X_train, y_train):
 
 
 def get_threshold(dates, score):
-    print("dates len", len(dates))
-    print("scores len", len(score))
-    print(type(dates))
     thresholds = [x for x in range(0, 20)]
     all_anormals = list()
     for th in thresholds:
@@ -84,11 +82,16 @@ def get_threshold(dates, score):
     return min_th
 
 def process_predict(X_pred,  timesteps, n_features): 
-    print("X_pred.shape", X_pred.shape)
+    print("n_features", n_features)
+    print("timesteps", timesteps)
+    print("X_pred shape 1", X_pred.shape)
     if len(X_pred.shape) == 3:
-       X_pred = np.squeeze(X_pred)
-       X_pred = X_pred[:,:n_features]
-       X_pred = X_pred.reshape(X_pred.shape[0]*timesteps, n_features)
+        X_pred = X_pred[:,:n_features,:]
+        X_pred = X_pred.reshape(X_pred.shape[0], n_features)
+        print("X_pred shape", X_pred.shape)
+    else:
+        X_pred = X_pred.reshape(X_pred.shape[0], n_features)
+    print("X_pred.shape 4", X_pred.shape)
     return X_pred
 def plot_training_losses(history):
     fig, ax = plt.subplots(figsize=(14,6), dpi=80)
@@ -148,7 +151,7 @@ def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, 
     X_train_full = preprocess(raw, timesteps, form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
  
     if output_form == "3D":
-        y_train_full = X_train_full[:, :n_features, :]
+        y_train_full = X_train_full[:, :, :n_features]
     else:
         y_train_full = generate_full_y_train(raw, n_input, timesteps, n_features)
     return X_train_full, y_train_full
@@ -156,19 +159,18 @@ def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, 
 
 
 def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None, dates=False):
-    data = pd.DataFrame()
-    if isinstance(raw, pd.DataFrame) and dates == False and 'date' in raw.columns:
+    if isinstance(raw, pd.DataFrame) and dates == False:
         print("is instance")
-        raw = raw.drop(['date'], axis = 1)
         data = series_to_supervised(raw, n_in=n_input)
         print("data", data.empty)
         print("data shape", data.shape)
         print("n_input", n_input)
-  
     else:
-        print("not instance")
         data = raw
-
+    data = preprocess_shapes(data, timesteps, form, input_data=input_data, n_seq=n_seq, n_input=n_input, n_features=n_features, dates=dates)
+    
+    return data
+def preprocess_shapes(data, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None, dates=False):
     if form == "4D":
         data = np.array(data.iloc[:, :n_input*n_features])
         print("data shape", data.shape)
@@ -182,9 +184,10 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
         columns = data.shape[1]
         samples = data.shape[0]
         cells = samples * columns
-        new_n_seq = cells/(samples*timesteps*n_features)
+        new_n_seq = round(cells/(samples*timesteps*n_features))
+        
         if new_n_seq != n_seq:
-            raise ValueError('Not possible to generate this number of sequences: %s' %(n_seq))
+            print('Not possible to generate this number of sequences: %s. New sequence %s' %(n_seq, new_n_seq))
        
 
         data = np.reshape(data, (samples, n_seq, timesteps, n_features))
@@ -223,8 +226,7 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
 
 
 def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
-    y_train_full = normal_sequence.drop(['date'], axis=1)
-    data = series_to_supervised(y_train_full, n_in=n_input)
+    data = series_to_supervised(normal_sequence, n_in=n_input)
    
     data = data.values
     
@@ -275,8 +277,6 @@ def split_features(n_features, X_train):
 
  
 def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None, dates=False):
-     if 'date' in X_train_D.columns:
-         X_train_D = X_train_D.drop(['date'], axis = 1) 
      X_train = series_to_supervised(X_train_D, n_in=n_input, dates=dates)
              
      size_X_train = X_train.shape[0]
@@ -289,14 +289,14 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
      X_val_2 = X_val.iloc[size_val:, :]
      
         
-     Xtrain = preprocess(X_train, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     Xval_1 = preprocess(X_val_1, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     Xval_2 = preprocess(X_val_2, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     Xtrain = preprocess_shapes(X_train, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     Xval_1 = preprocess_shapes(X_val_1, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     Xval_2 = preprocess_shapes(X_val_2, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
             
      
-     y_train = preprocess(X_train, timesteps, input_data = X_train, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     y_val_1 = preprocess(X_val_1, timesteps, input_data = X_val_1, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     y_val_2 = preprocess(X_val_2, timesteps, input_data = X_val_2, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_train = preprocess_shapes(X_train, timesteps, input_data = X_train, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_val_1 = preprocess_shapes(X_val_1, timesteps, input_data = X_val_1, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     y_val_2 = preprocess_shapes(X_val_2, timesteps, input_data = X_val_2, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      
      print("X_val_1", X_val_1.shape)
      print("y_val_1", y_val_1.shape)
@@ -305,7 +305,7 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
  
 def save_parameters(mu, sigma, timesteps, min_th, filename):
     param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'min_th':min_th}
-    filename = 'parameters' + filename + '.pickle'
+    filename = 'parameters_' + filename + '.pickle'
     path = os.path.join("..//gui_margarida//gui/assets", filename)
     with open(path, 'wb') as f:  
         pickle.dump(param, f, protocol=pickle.HIGHEST_PROTOCOL)
@@ -313,7 +313,7 @@ def save_parameters(mu, sigma, timesteps, min_th, filename):
 
 def load_parameters(filename):
     global mu, sigma, timesteps, min_th
-    filename = 'parameters' + filename + '.pickle'
+    filename = 'parameters_' + filename + '.pickle'
     current_dir = os.getcwd()
     print("current dir", current_dir)
     path = ""
@@ -337,7 +337,7 @@ def get_date(df):
     return df['date']
 
 
-def generate_days(X_train_D, n_input, validation=True):   
+def generate_days(X_train_D, n_input, time, validation=True):   
     X_train = pd.DataFrame()
     X_train = series_to_supervised(X_train_D, n_in=n_input, dates=True)
     if validation == True:   
@@ -345,11 +345,9 @@ def generate_days(X_train_D, n_input, validation=True):
         size_X_train = X_train.shape[0]
        
         size_train = round(size_X_train*0.8)
-        print("size train", size_train)
         X_val = X_train.iloc[size_train:, :]
         X_train = X_train.iloc[:size_train, :]
        
-        print("size validation", X_val.shape[0])
         size_val = round(0.5*X_val.shape[0])
         print("size_val", size_val)
           
@@ -358,15 +356,15 @@ def generate_days(X_train_D, n_input, validation=True):
         
        
     
-        return X_train['date'], X_val_1['date'], X_val_2['date']
+        return X_train[time], X_val_1[time], X_val_2[time]
     else:
-        return X_train['date']
+        return X_train[time]
 
 def drop_date(df):
     df = df.drop(['date'], axis = 1)
     return df
 
-def detect_anomalies(X_test, y_test, X_test_D, h5_filename, timesteps, n_features, choose_th=None):
+def detect_anomalies(X_test, y_test, X_test_D, h5_filename, timesteps, n_features, choose_th=None, time='date'):
     param = load_parameters(h5_filename)
 
     filename = h5_filename + '.h5'
@@ -404,7 +402,7 @@ def detect_anomalies(X_test, y_test, X_test_D, h5_filename, timesteps, n_feature
     vector = get_error_vector(y_test, y_pred, timesteps, n_features)
     vector = np.squeeze(vector)
         
-    score = anomaly_score(mu, sigma, vector)
+    score = anomaly_score(mu, sigma, vector, n_features)
     
     values = list()
     dates = list()
@@ -414,7 +412,7 @@ def detect_anomalies(X_test, y_test, X_test_D, h5_filename, timesteps, n_feature
         if sc > anomalies_th:
              anomalies += 1
              value = X_test_D['value'].iloc[i]
-             date = X_test_D['date'].iloc[i]
+             date = X_test_D[time].iloc[i]
              dates.append(date)
              values.append(value)
         i += 1
@@ -423,20 +421,21 @@ def detect_anomalies(X_test, y_test, X_test_D, h5_filename, timesteps, n_feature
     print("predict", predict)
     
     predict['value'] = values
-    predict['date'] = dates
+    predict[time] = dates
     return predict
 
-def join_partitions_features(train_chunks_all, no_partitions_cv):
+def join_partitions_features(train_chunks_all, no_partitions_cv,to_exclude):
     """Concatenates information of several sensors"""
     train_chunks = list()
     for i in range(0,no_partitions_cv):
         to_concat = [item[i] for item in train_chunks_all] 
         union_normal_sequences = pd.concat(to_concat, axis=1) 
-        union_normal_sequences =  union_normal_sequences.drop_duplicates("date", "first")
-        col = (union_normal_sequences.columns == 'date').argmax()
-        dates = union_normal_sequences.iloc[:, col]
-        union_normal_sequences = union_normal_sequences.drop(['date'], axis=1)
-        union_normal_sequences['date'] = dates                 
+        union_normal_sequences =  union_normal_sequences.drop_duplicates(to_exclude, "first")
+        for column in to_exclude:
+            col = (union_normal_sequences.columns == column).argmax()
+            dates = union_normal_sequences.iloc[:, col]
+            union_normal_sequences = union_normal_sequences.drop([column], axis=1)
+            union_normal_sequences[column] = dates                 
         train_chunks.append(union_normal_sequences)
     return train_chunks
             
@@ -451,7 +450,6 @@ def test_2d():
     print("y_test shape", y_test.shape)
     #comeu 4 porque e' o n_input e o n_input nao considera os nans
     return True
-
 
 def test():
    col_1 = [x for x in range(20)]

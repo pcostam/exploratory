@@ -17,7 +17,7 @@ import base64
 from io import BytesIO
 from scipy.stats import norm
 from unsupervised.Pvalue import Pvalue
-from unsupervised.Sensor import Sensor
+from base.Sensor import Sensor
 from scipy.stats import boxcox, yeojohnson
 import time
 from report import image, HtmlFile, tag, Text

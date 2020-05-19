@@ -13,8 +13,23 @@ from sklearn.model_selection import train_test_split
 import matplotlib.pyplot as plt
 import datetime
 import os
+from base.database import generate_csv
+from os import listdir
+from os.path import isfile, join
+import sys
+#sys.path.append('../setup')
+from preprocessing.setup import configuration
+
 #https://machinelearningmastery.com/convert-time-series-supervised-learning-problem-python/
-def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, stride=None):
+
+
+def shift_column(new_df, i, names_columns):
+    for name in names_columns:
+         new_df[name] = new_df[name].shift(i)
+  
+    return new_df
+
+def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, stride=None, dates=False, leaks=False):
    """
    Frame a time series as a supervised learning dataset.
    Arguments:
@@ -25,11 +40,22 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, stride=None):
 	Returns:
 	Pandas DataFrame of series framed for supervised learning.
    """
-   n_vars = 1 if type(data) is list else data.shape[1]
    df = pd.DataFrame(data)
-   #n_vars = df.shape[1]
-   print("nvars", n_vars)
- 
+   
+   time = None
+   if 'date' in df.columns:
+       time = 'date'
+   elif 'time' in df.columns:
+       time =  'time'
+   if time != None:
+       df = df.drop([time], axis=1)
+       
+   n_vars = df.shape[1]
+   times_column = list()
+   if dates and time != None:
+       times_column = data[time]
+   del data
+   
    cols, names, pivots = list(), list(), list()
     
    # input sequence (t-n, ... t-1)
@@ -45,10 +71,9 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, stride=None):
            names += [('var%d(t+%d)' % (j+1, i)) for j in range(n_vars)]
 	# put it all together
    agg = pd.concat(cols, axis=1)
-
+    
    agg.columns = names
 
-   
    #stride - delete windows
    if stride != None:
        indexes_to_drop = list()
@@ -78,6 +103,9 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, stride=None):
        print("indexes_to_drop", indexes_to_drop)
        
        agg.drop(df.index[indexes_to_drop], inplace=True)
+   if dates and time!=None:
+       agg[time] = times_column
+       
    # drop rows with NaN values  
    if dropnan:
        agg.dropna(inplace=True)
@@ -87,10 +115,8 @@ def series_to_supervised(data, n_in=1, n_out=1, dropnan=True, stride=None):
   
     
 def preprocess_data(df, granularity, start_date, end_date):
-    print("preprocess start date", type(start_date))
     minutes = str(granularity) + "min"
     df = select_data(df, start_date, end_date)
-    print("downsample")
     df = downsample(df, minutes)
 
     return df 
@@ -106,10 +132,8 @@ def create_data(table, sensorId, n_input, limit=False):
     df_all = create_dataset(table, sensorId, limit=limit)
     y = df_all['value'][:14]
     #plot(y)
-    print(y)
     #plot(df['value'][:14])
     #date = df['date'].tolist()
-    print("DF>>>>>>>>>>", df_all.columns.values)
     df = df_all.drop(['date'], axis = 1)
     yt = df['value'].tolist()
     decide_input(yt,16,1)
@@ -125,22 +149,14 @@ def create_dataset_as_supervised(table, sensorId, timesteps=3, limit=True, df_to
     if df_to_csv == True:
         df_all = csv_to_df(sensorId, limit = limit)
     y = df_all['value'][:14]
-    #plot(y)
-    print(y)
-    #plot(df['value'][:14])
-    #date = df['date'].tolist()
-    print("DF>>>>>>>>>>", df_all.columns.values)
+    
     df = df_all.drop(['date','sensortgId', 'id'], axis = 1)
     yt = df['value'].tolist()
     decide_input(yt,16,1)
     data = series_to_supervised(df, timesteps)
     data["date"] = df_all["date"]
-    print("data", data)
-    print("DATA>>>>>>>", data.shape[1])
     X = np.array(data.iloc[:,:timesteps])
-    print("X>>>>>>", X)
     y = np.array(data.iloc[:,timesteps])
-    print("y>>>>", y)
     X = pd.DataFrame(X, columns=["var(t-3)", "var(t-2)", "var(t-1)"])
     X["date"] = np.array(data["date"])
     y = pd.DataFrame(y, columns=["value"])
@@ -169,10 +185,6 @@ def create_dataset(table, sensorId, limit = True):
     return df
 
 def select_data(df, min_date, max_date):  
-    print("SELECT DATA 2")
-    print("df.index", df.index)
-    print("df.columns", df.columns)
-    print("df.empty", df.empty)
     df['date'] = pd.to_datetime(df['date'])
     min_date = pd.to_datetime(min_date)
     max_date = pd.to_datetime(max_date)
@@ -184,15 +196,10 @@ def select_data(df, min_date, max_date):
         old_df = df.copy()
         df = df[(df['date'] >= min_date) & (df['date'] <= max_date)]
         if df.empty:
-            print("df is empty. return old df")
-            print("old_df.empty", old_df.empty)
             return old_df
-        print("df head", df.head())
-        print("df.index", df.index)
-        print("df.columns", df.columns)
+       
         df.index = pd.RangeIndex(start=0, stop=df.shape[0])
-        print("df.index", df.index)
-        print("df.columns", df.columns)
+    
         return df
     
 def csv_to_df(sensorId, path, limit = True, n_limit=1000):
@@ -201,8 +208,8 @@ def csv_to_df(sensorId, path, limit = True, n_limit=1000):
         df = pd.read_csv(path, nrows = n_limit)
     else:
         df = pd.read_csv(path)
-        
-    df[['value']] = df[['value']].astype('float32')
+    if 'value' in df.columns:
+        df[['value']] = df[['value']].astype('float32')
     return df
 
 def find_gap(df, frequency):
@@ -223,8 +230,7 @@ def find_gap(df, frequency):
      return res
     
 def csv_to_chunks(sensorId, path, start=None, end=None, n_limit=None):
-    print("csv_to_chunks")
-    list_df = list()
+    #list_df = list()
     df = pd.DataFrame()
     
     if n_limit != None:
@@ -238,12 +244,12 @@ def csv_to_chunks(sensorId, path, start=None, end=None, n_limit=None):
   
     df = downsample(df, '15min')
        
-    indexes = find_gap(df, 15)
-    list_df = np.split(df, indexes)
-    print("list df", list_df)
+    #indexes = find_gap(df, 15)
+    #list_df = np.split(df, indexes)
+    #print("list df", list_df)
     
                        
-    return list_df
+    return df
 
 def csv_to_TextFileReader(sensorId, path, limit=True, n_limit=1000):
     if limit == True:
@@ -319,24 +325,6 @@ def script_to_csv():
         path = "F:\\manual\\Tese\\exploratory\\wisdom\\dataset\\infraquinta\\real\\anomalies\\sensor_"+ str(sensorId) + ".csv"
         generate_csv(query, sensorId, path)
         
-def generate_csv(query, sensorId, path):
-     #import configuration 
-
-     #root = configuration.read_config() 
-     #db_config = configuration.get_db(root)
-   
-     sensor_id = 0
-     
-     mydb = mysql.connector.connect(host='localhost',user='root',password='banana')    
-     
-     df = pd.read_sql(query, con=mydb)
-     df.to_csv(index=False, path_or_buf=path)
-     
-     print("  sensor " + str(sensorId) + ": " + str(df.shape[0]) + " rows")
-        
-     sensor_id += 1
-      
-     mydb.close()
 
 
 def generate_anomalous(idSensor, limit=True, df_to_csv = False):
@@ -372,6 +360,11 @@ def generate_anomalous(idSensor, limit=True, df_to_csv = False):
     return df
  
 
+def generate_normal_simulation(df, n_train):
+    df = df[(df['leak'] == 0)]
+    df = df.iloc[:n_train, :]
+    print("df shape", df.shape)
+    return df
    
 def generate_normal(idSensor, start=None, end=None, simulated=False, n_limit=None, df_to_csv = False, to_chunks=True):
     df = pd.DataFrame()
@@ -383,18 +376,21 @@ def generate_normal(idSensor, start=None, end=None, simulated=False, n_limit=Non
                 path =  init_path + "/wisdom/dataset/infraquinta/real/normal/sensor_"+ str(idSensor) + ".csv"
             else:
                 path = init_path + "\\dataset\\infraquinta\\real\\normal\\sensor_" + str(idSensor) + ".csv"
+            df = csv_to_chunks(idSensor, path, start=start, end=end, n_limit=n_limit)
+   
         else:
+             """
              if init_path == "/content/drive/My Drive/Tese/exploratory":
                 print("drive path simulated")
               
              else:
                 path =  init_path + "\\dataset\\simulated\\telegestao\\winter\\sensor_"+ str(idSensor) + ".csv"
-                 
-        #df = csv_to_df(idSensor, path, limit=limit)
-        if to_chunks == True:
-            df = csv_to_chunks(idSensor, path, start=start, end=end, n_limit=n_limit)
-        else:
-            df = csv_to_df(idSensor, path, n_limit=n_limit)
+             """
+            
+             new_df = preprocess_simulation(idSensor, 18000)
+             
+             df = generate_normal_simulation(new_df, 10000)
+  
           
     else:
         db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
@@ -460,38 +456,84 @@ def get_total_min_date(table):
   
      return res
 
+def preprocess_simulation(idSensor, no_leaks):
+    from os.path import dirname
+    conf_file = join(dirname(__file__), 'setup', 'config.xml')
+    root = configuration.read_config(conf_file)
+    path = configuration.get_path_simulation(root, simulation="leaks", type_leak="fugas_Q", season=None)
+             
+    columns = list()
+    time_passed = 0
+    for root, dirs, files in os.walk(os.path.abspath(path)):
+        for file in files[:no_leaks]:
+            new_path = os.path.join(root, file)
+            df = pd.read_csv(new_path)
+            df = df[[idSensor,'leak']]
+            no_rows = df.shape[0]
+            total_seconds = no_rows*600
+            times = [x for x in range(time_passed,time_passed + total_seconds,600)]
+            time_passed = time_passed + total_seconds
+            df['time'] = times
+            df = df.rename(columns={idSensor: 'value'})
+            columns.append(df)
+            
+    agg = pd.concat(columns)
+          
+    return agg
 
-def generate_total_sequence(idSensor, table, start, end, n_limit=None):
+def generate_total_sequence(idSensor, table, start, end, simulated=False, n_limit=None):
+    """Generates the time series (with anomalies)"""
     df = pd.DataFrame()
 
     init_path = os.path.dirname(os.getcwd())
     path = ""
-    if init_path == "/content/drive/My Drive/Tese/exploratory":
-        path =  init_path + "/wisdom/dataset/infraquinta/real/sensor_"+ str(idSensor) + ".csv"
+    if simulated:
+        from os.path import dirname
+
+        conf_file = join(dirname(__file__), 'setup', 'config.xml')
+        root = configuration.read_config(conf_file)
+        path = configuration.get_path_simulation(root, simulation="leaks", type_leak="fugas_Q", season=None)
+        df = preprocess_simulation(path, idSensor, 10000)
     else:
-        path = init_path + "\\dataset\\infraquinta\\real\\sensor_" + str(idSensor) + ".csv"
-    
-    #df = csv_to_df(idSensor, path, limit=limit)
-   
-    df = csv_to_chunks(idSensor, path, start=start, end=end, n_limit=n_limit)
+        if init_path == "/content/drive/My Drive/Tese/exploratory":
+            path =  init_path + "/wisdom/dataset/infraquinta/real/sensor_"+ str(idSensor) + ".csv"
+        else:
+            path = init_path + "\\dataset\\infraquinta\\real\\sensor_" + str(idSensor) + ".csv"
+        
+        df = csv_to_chunks(idSensor, path, start=start, end=end, n_limit=n_limit)
  
-    return df
+    return df 
 
     return True
+
+def change_format(res, frmt, new_frmt):
+    frmt ='%Y-%m-%d %H:%M:%S'
+    res = datetime.datetime.strptime(str(res), frmt)
+       
+    new_frmt = '%d-%m-%Y %H:%M:%S'
+    res = datetime.datetime.strftime(res, new_frmt)
+    
+    return res
 def generate_sequences(sensorId, table, start=None, end=None, simulated=False, n_limit = None, df_to_csv = False):
-    print("generate_sequences")
     normal_sequence = pd.DataFrame()
     test_sequence = pd.DataFrame()
     total_sequence = generate_total_sequence(sensorId, table, start, end, n_limit=n_limit)
+    size_total_sequence = total_sequence.shape[0]
+    size_train = round(size_total_sequence*0.8)
+    sequence_train = total_sequence.iloc[:size_train, :]
+
+    if start == None and end == None:
+        start = str(min(sequence_train['date']))
+        end = str(max(sequence_train['date']))
     
-    stime = "02-12-2017 00:00:00"
-    etime = "31-12-2017 00:00:00"
-        
-    test_sequence = select_data(total_sequence[0], stime, etime)
+    test_sequence = total_sequence.iloc[size_train:, :]
+    print("start", start)
+    print("end", end)
+    
+    #test_sequence = select_data(total_sequence[0], stime, etime)
     if start!=None and end!=None:
-        frmt = '%d-%m-%Y %H:%M:%S'
-        start = datetime.datetime.strptime(start, frmt)
-        end = datetime.datetime.strptime(end, frmt)
+        start = change_format(start, '%Y-%m-%d %H:%M:%S', '%d-%m-%Y %H:%M:%S')
+        end = change_format(end, '%Y-%m-%d %H:%M:%S', '%d-%m-%Y %H:%M:%S')
         
     if df_to_csv == True:
         init_path = os.path.dirname(os.getcwd())
@@ -507,6 +549,138 @@ def generate_sequences(sensorId, table, start=None, end=None, simulated=False, n
     else:
         normal_sequence = generate_normal(sensorId, start=start, end=end,simulated=simulated, n_limit=n_limit, df_to_csv = df_to_csv)
        
-    print(">>>size normal sequence:", len(normal_sequence))
-   
     return normal_sequence, test_sequence
+
+
+
+def split_train_test(normal_sequence, all_sequence, n_train, test_split=0.2, gap=0, time="date"):
+    """
+    Splits sequence into normal sequence(to train) and test sequence
+    (normal and anomalous), making into chunks.
+    
+    Parameters
+    ----------
+    Dataframe
+    n_train : int
+    Size of each chunk.
+    
+    Returns
+    -------
+    None.
+
+    """
+    n_test = get_no_instances_test(n_train, test_split)
+    print("n_train", n_train)
+    print("n_test", n_test)
+    margin = 0
+    train_chunks = list()
+    test_chunks = list()
+    n_records = len(all_sequence)
+    start_date = normal_sequence.iloc[0][time]
+    
+    while margin < n_records:
+        train = normal_sequence[(normal_sequence[time] >= start_date)]
+        if train.empty:
+            break
+        train = train.iloc[:n_train]
+        print("train", train)
+        #Date that should begin anomalous sequence for test sequence
+        start_date = train.iloc[-1][time]
+        test = all_sequence[(all_sequence[time] >= start_date)]
+        test = test[:n_test]   
+        #Date that should end anomalous sequence for test sequence
+        #and begin new train chunk
+        end_date = test.iloc[-1][time]
+        start_date = end_date
+
+        test_chunks.append(test)
+        train_chunks.append(train)
+        
+        margin += n_train - 1
+        
+    return train_chunks, test_chunks
+
+    
+    
+    
+    
+
+def get_no_instances_test(n_train, test_split=0.2):
+    """ 
+    Returns number where of necessary instances to make the 
+    percentage test split necessary
+    Parameters
+    ----------
+    n_train : int
+        number of train instances
+    test_split : float, optional
+        percentage of test sequence
+    
+    """
+    return round((test_split*n_train)/(1-test_split))
+#blocked margin = n_train + n_test
+def rolling_out_cv(X, n_train, test_split=0.2, gap=0, blocked=True):
+    """ With X, divides in train and test chunks """
+    margin = 0
+    train_chunks = list()
+    test_chunks = list()
+    n_records = len(X)
+    start = 0
+    
+    n_test = round((test_split*n_train)/(1-test_split))
+    print("n_val", n_test)
+
+    i = 0
+    while margin < n_records:
+        start = i + margin
+        i += 1
+        stop = start + n_train
+        train = X[start:stop]
+        
+        #index test set
+        start = stop + gap
+        stop = start + n_test
+        
+        if X[start:stop].empty:
+            break
+        
+       
+        test_chunks.append(X[start:stop])
+        train_chunks.append(train)
+        if blocked:
+            margin += n_train + n_test -1
+        else:
+            margin += n_train - 1
+        
+    return train_chunks, test_chunks
+    
+  
+def test():
+    col_1 = [x for x in range(40)]
+    col_2 = [x for x in range(5, 35)]
+    dt = datetime.datetime(2010, 12, 1)
+    end = datetime.datetime(2010, 12, 30, 23, 59, 59)
+    step = datetime.timedelta(minutes=15)
+    dates_list = []
+    while dt < end:
+        dates_list.append(dt.strftime('%Y-%m-%d %H:%M:%S'))
+        dt += step
+        
+    dates1 = dates_list[:40]
+    dates2 = dates_list[5:35]
+    d = {'value': col_2, 'date':dates2}
+    d2 = {'value': col_1, 'date': dates1}
+    df1 = pd.DataFrame(data=d)
+    df2 = pd.DataFrame(data=d2)
+    #train_chunks, validation_chunks = rolling_out_cv(df1, n_train=6)
+    
+    train_chunks, test_chunks = split_train_test(df1, df2, n_train=6, test_split=0.2, gap=0)
+    for train,test in zip(train_chunks, test_chunks):
+        print("train", train)
+        print("test", test)
+    
+        
+
+   
+    
+    

@@ -7,16 +7,17 @@ Created on Tue Mar 24 17:18:39 2020
 
 from keras.layers import LSTM, Dense, Bidirectional
 from keras.models import Sequential
-from Baseline import Baseline
+#from Baseline import Baseline
 from keras.optimizers import Adam
 import tuning
 from skopt.space import Integer, Real
+from EncDec import EncDec
 
-class stacked_BiLSTM(Baseline):        
+class stacked_BiLSTM(EncDec):        
     #See references
     #https://machinelearningmastery.com/how-to-develop-lstm-models-for-time-series-forecasting/
     def stacked_bilstm_model(X, y, config):
-        toIndex = Baseline.toIndex 
+        toIndex = EncDec.toIndex 
         num_lstm_layers = tuning.get_param(config, toIndex, "num_lstm_layers")
         learning_rate = tuning.get_param(config, toIndex, "learning_rate")
         
@@ -30,10 +31,10 @@ class stacked_BiLSTM(Baseline):
             name = 'layer_lstm_encoder_{0}'.format(i+1)
             model.add(Bidirectional(LSTM(50, activation='relu', return_sequences=True, name=name)))
         model.add(Bidirectional(LSTM(50, activation='relu', return_sequences=False)))
-        model.add(Dense(1))
+        model.add(Dense(n_features))
         
         adam = Adam(lr=learning_rate)
-        model.compile(optimizer=adam, loss='mae',  metrics=['accuracy'])
+        model.compile(optimizer=adam, loss='mae')
         
         
         return model
@@ -52,9 +53,11 @@ class stacked_BiLSTM(Baseline):
         0.01,
         128] 
         
+        EncDec.dimensions = dimensions
+        EncDec.default_parameters = default_parameters
       
         for i in range(0, len(dimensions)):
-             Baseline.toIndex[dimensions[i].name] = i
+              EncDec.toIndex[dimensions[i].name] = i
              
         return dimensions, default_parameters
     
@@ -65,7 +68,7 @@ class stacked_BiLSTM(Baseline):
         stacked_BiLSTM.input_form = "3D"
         stacked_BiLSTM.output_form = "2D"
         stacked_BiLSTM.n_seq = None
-        stacked_BiLSTM.n_input = Baseline.n_steps  
+        stacked_BiLSTM.n_input = EncDec.n_steps  
         stacked_BiLSTM.h5_file_name = "stackedBiLSTM"
         stacked_BiLSTM.type_model_func = stacked_BiLSTM.stacked_bilstm_model
         

@@ -285,6 +285,8 @@ class CNN_LSTM(EncDec):
         CNN_LSTM.batch_normalization = True
         CNN_LSTM.use_cross_validation = True
         CNN_LSTM.no_calls_fitness = 0
+        CNN_LSTM.h5_file_name = type_model + "_" + model_name
+        print("H5 file name cnn lstm", CNN_LSTM.h5_file_name )
         
         for i in range(0, len(CNN_LSTM.dimensions)):
              CNN_LSTM.toIndex[CNN_LSTM.dimensions[i].name] = i
@@ -348,7 +350,7 @@ class CNN_LSTM(EncDec):
                 input_data = utils.split_features(EncDec.n_features, X_train)
                 hist = model.fit(input_data, y_train, validation_data=(X_val_1, y_val_1), epochs=200, batch_size=batch_size, callbacks=[es])
               
-        loss = hist.history['loss'][-1]
+        loss = hist.history['val_loss'][-1]
         all_losses.append(loss)
             
          
