@@ -36,7 +36,11 @@ def get_error_vector(x_input, x_output, timesteps, n_features):
     x_input = process_predict(x_input, timesteps, n_features)
     x_output = process_predict(x_output, timesteps, n_features)   
     
-    return np.abs(x_output - x_input)
+    vector = np.abs(x_output - x_input)
+    vector = np.squeeze(vector)
+    if len(vector.shape) == 1:
+        vector = vector.reshape(vector.shape[0], 1)
+    return vector
     
  # calculate anormaly score (X-mu)^Tsigma^(-1)(X-mu)
 def anomaly_score(mu, sigma, X, n_features):
@@ -158,20 +162,19 @@ def generate_full(raw, timesteps,input_form="3D", output_form="3D", n_seq=None, 
 
 
 
-def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None, dates=False):
+def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None, dates=False):   
     if isinstance(raw, pd.DataFrame) and dates == False:
-        print("is instance")
         data = series_to_supervised(raw, n_in=n_input)
-        print("data", data.empty)
-        print("data shape", data.shape)
-        print("n_input", n_input)
     else:
         data = raw
+        
+    
     data = preprocess_shapes(data, timesteps, form, input_data=input_data, n_seq=n_seq, n_input=n_input, n_features=n_features, dates=dates)
     
     return data
 def preprocess_shapes(data, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None, dates=False):
     if form == "4D":
+        print("n_input", n_input)
         data = np.array(data.iloc[:, :n_input*n_features])
         print("data shape", data.shape)
         #normalize data
@@ -185,11 +188,14 @@ def preprocess_shapes(data, timesteps, form="3D", input_data=pd.DataFrame(), n_s
         samples = data.shape[0]
         cells = samples * columns
         new_n_seq = round(cells/(samples*timesteps*n_features))
-        
+        print("n_seq", n_seq)
         if new_n_seq != n_seq:
             print('Not possible to generate this number of sequences: %s. New sequence %s' %(n_seq, new_n_seq))
-       
-
+            n_seq = new_n_seq
+        print("samples", samples)
+        print("n_seq", n_seq)
+        print("timesteps", timesteps)
+        print("n_features", n_features)
         data = np.reshape(data, (samples, n_seq, timesteps, n_features))
     
         return data
@@ -246,7 +252,7 @@ def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
 
 def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None, dates=False):       
     print(">>>>generate_sets")
-
+    print("N_features", n_features)
     if validation:
         return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features, dates=dates)
 
@@ -277,6 +283,7 @@ def split_features(n_features, X_train):
 
  
 def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None, dates=False):
+     print("X_train_D")
      X_train = series_to_supervised(X_train_D, n_in=n_input, dates=dates)
              
      size_X_train = X_train.shape[0]
@@ -304,6 +311,7 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
      return Xtrain, y_train, Xval_1, y_val_1, Xval_2, y_val_2
  
 def save_parameters(mu, sigma, timesteps, min_th, filename):
+    print("save parameters")
     param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'min_th':min_th}
     filename = 'parameters_' + filename + '.pickle'
     path = os.path.join("..//gui_margarida//gui/assets", filename)
@@ -422,6 +430,7 @@ def detect_anomalies(X_test, y_test, X_test_D, h5_filename, timesteps, n_feature
     
     predict['value'] = values
     predict[time] = dates
+    print("end")
     return predict
 
 def join_partitions_features(train_chunks_all, no_partitions_cv,to_exclude):
@@ -438,7 +447,6 @@ def join_partitions_features(train_chunks_all, no_partitions_cv,to_exclude):
             union_normal_sequences[column] = dates                 
         train_chunks.append(union_normal_sequences)
     return train_chunks
-            
           
 
 def test_2d():
