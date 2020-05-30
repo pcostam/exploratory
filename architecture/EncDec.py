@@ -121,39 +121,50 @@ class EncDec(object):
         TP = 0
         FP = 0
         i = 0
+        print("number of anomalies detected", len(anomalies))
+        snormal_pred = pd.DataFrame()
+        sevent_pred = pd.DataFrame()
         for date in anomalies[time]:
               for event in events:
                 if time == 'date':
                     date = pd.to_datetime(date)
                 if date >= event.getStart() and date <= event.getEnd():
+                    print("match")
                     detected_events[event.getId()] = event
-                    columns_event.append(anomalies.iloc[i,:])
+                    sevent_pred.append(anomalies.iloc[i,:])
+                    #columns_event.append()
                     TP += 1
                 else:
-                    columns_normal.append(anomalies.iloc[i,:])
+                    snormal_pred.append(anomalies.iloc[i,:])
                     FP += 1
               i += 1
-        return TP, FP, columns_event, columns_normal, detected_events
+        print("snormal_pred", snormal_pred)
+        print ("detected events", len(detected_events))
+        return TP, FP, sevent_pred, snormal_pred, detected_events
     
-    def negatives(columns_event, columns_normal, test_sequence, events, time):
+    def negatives(sevent_pred, snormal_pred, test_sequence, events, time):
         FN = 0
         TN = 0   
+        """
         snormal_pred = pd.DataFrame()
         if columns_normal != []:
-             snormal_pred = pd.concat(columns_normal, names=['value', 'time'])
-         
+             snormal_pred = pd.concat(columns_normal, names=['value', time], axis=1)
+        """ 
         sevents_true = Network.findSubSequenceWithEvent(test_sequence, events, time)
         snormal_true = Network.findSubSequenceNoEvent(test_sequence, events, time)
-       
+        print("columns", sevents_true.columns)
+        print("columns", snormal_pred.columns)
+        print("columns", snormal_true.columns)
+        
         if not(sevents_true.empty) and not(snormal_pred.empty):
              FN = pd.merge(sevents_true, snormal_pred, how='inner', on=[time]).shape[0]
-        if not(snormal_true.empty) and (snormal_pred.empty):
+        if not(snormal_true.empty) and not(snormal_pred.empty):
              TN = pd.merge(snormal_true, snormal_pred, how='inner', on=[time]).shape[0]
         return FN, TN
     
     def confusion_matrix(anomalies, events, time, test_sequence):
-           TP, FP, columns_event, columns_normal, detected_events = EncDec.positives(anomalies, events,time)
-           FN, TN = EncDec.negatives(columns_event, columns_normal, test_sequence, events, time)
+           TP, FP, sevent_pred, snormal_pred, detected_events = EncDec.positives(anomalies, events,time)
+           FN, TN = EncDec.negatives(sevent_pred, snormal_pred,  test_sequence, events, time)
       
            return {'TP':TP, 'FP':FP, 'FN':FN, 'TN':TN, 'detected_events':detected_events}
     
@@ -250,6 +261,10 @@ class EncDec(object):
             EncDec.add_timeseries(ts) 
         return vector, y_pred
         
+    def make_prediction(X, model):
+        #inverted = [inverse_difference(data[i], diff[i]) for i in range(len(diff))]
+        y_pred = model.predict(X)
+        return y_pred
         
     def test_stats(X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2, X_train_full, y_train_full, model, network, test_sequence,  normal_sequence, time, history):
         loss, val_loss = EncDec.get_losses(history)
@@ -285,7 +300,7 @@ class EncDec(object):
         #sanity check
         EncDec.do_f_beta_score(min_th, score, dates_val_2)
        
-        if EncDec.save == True:
+        if EncDec.parameters.get_save() == True:
            utils.save_parameters(mu, sigma, EncDec.parameters.get_n_steps(), min_th, EncDec.h5_file_name)
        
         print("test_sequence", test_sequence.shape)
@@ -298,7 +313,7 @@ class EncDec(object):
         #plot all time series
         EncDec.plot_all_time_series()
       
-        anomalies = utils.detect_anomalies(X_test, y_test, test_sequence, EncDec.h5_file_name, EncDec.parameters.get_n_steps(), EncDec.parameters.get_n_features(), time=time)
+        anomalies = utils.detect_anomalies(X_test, y_test, test_sequence, EncDec.h5_file_name, EncDec.parameters.get_n_steps(), EncDec.parameters.get_n_features(), time=time, choose_th=min_th)
         print("getevents")
         events = network.getEvents()
         print("number of events", len(events))
@@ -328,6 +343,11 @@ class EncDec(object):
         TN = EncDec.getTN(matrix)
         detected_events = matrix['detected_events']
        
+        print("detected events", detected_events)
+        print("TP", TP)
+        print("FP", FP)
+        print("TN", TN)
+        print("FN", TP)
         no_detected_events = len(list(detected_events.keys()))
         EncDec.file.append(Text.Text("Number detected events:" + str(no_detected_events)))
         EncDec.file.append(Text.Text("True positive:" + str(TP)))
@@ -466,7 +486,12 @@ class EncDec(object):
         return to_exclude
         
     @classmethod
-    def do_train(cls, sensors=["12"], iterative=False, timesteps=96, cv=True, simulated = False, bayesian=False, save=True, validation=True, hidden_size=16, code_size=4):
+    def do_train(cls, user_parameters):
+            EncDec.parameters = user_parameters
+            simulated = EncDec.parameters.get_simulated()
+            sensors=["12"]
+            iterative=False
+            cv=True
             typeData = EncDec.get_type_data(simulated)
             network = Network("infraquinta", typeData=typeData, chosen_sensors=sensors,
                               no_leaks=1000, load=False)
@@ -474,23 +499,19 @@ class EncDec(object):
         
             path_report = "F:/manual/Tese/exploratory/wisdom/reports_files/report_models/%s.html" % cls.report_name
             EncDec.init_report(path_report)
-            cls.parameters.set_n_steps(timesteps)
            
-            EncDec.save = save
             n_train = 8640
             #n_train = 700
             EncDec.h5_file_name = cls.h5_file_name
-            EncDec.validation = validation
             toIndex = cls.toIndex
             EncDec.file = cls.file
         
             type_model_func = cls.type_model_func
-            cls.hidden_size = hidden_size
-            cls.code_size = code_size 
+            
             config = cls.config
             to_exclude = EncDec.get_columns_to_exclude(simulated)
-            map_stat = EncDec.do_map_stat(cls.hidden_size, cls.code_size, 
-                                   cls.parameters.get_dropout(), cls.parameters.get_regularizer(), timesteps)
+            map_stat = EncDec.do_map_stat(EncDec.parameters.get_hidden_size(), EncDec.parameters.get_code_size(), 
+                                   EncDec.parameters.get_dropout(), EncDec.parameters.get_regularizer(), EncDec.parameters.get_n_steps())
             
             EncDec.input_form=cls.input_form
             EncDec.output_form=cls.output_form
@@ -498,7 +519,7 @@ class EncDec(object):
             file = EncDec.add_multiple_stats(map_stat)
             all_sequence, all_normal_sequence = EncDec.generate_sequences_sensors(sensors, time, simulated, network)
          
-            if bayesian == True:
+            if EncDec.parameters.get_bayesian() == True:
                 cls.config = tuning.do_bayesian_optimization(cls.fitness, cls.dimensions, cls.default_parameters)
             
           
@@ -511,10 +532,10 @@ class EncDec(object):
             train_chunks = utils.join_partitions_features(train_chunks_all, k, to_exclude)
             test_chunks = utils.join_partitions_features(test_chunks_all, k, to_exclude)
      
-            cls.parameters.set_n_features(len(train_chunks[0].columns) - len(to_exclude))
-            EncDec.parameters = cls.parameters
+            EncDec.parameters.set_n_features(len(train_chunks[0].columns) - len(to_exclude))
+            cls.parameters = EncDec.parameters
             
-            run_losses, run_val_losses = EncDec.train(network, k, config, file, train_chunks, test_chunks,time, type_model_func, toIndex, validation)
+            run_losses, run_val_losses = EncDec.train(network, k, config, file, train_chunks, test_chunks,time, type_model_func, toIndex, EncDec.parameters.get_validation())
             mean_loss, mean_val_loss = EncDec.do_means(run_losses, run_val_losses)
             
             map_stat = {'Mean loss': mean_loss, 'Mean validation loss': mean_val_loss}

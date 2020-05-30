@@ -5,7 +5,7 @@ Created on Sat Feb 22 12:41:53 2020
 @author: anama
 """
 from base.Event import Event
-from datetime import datetime
+import datetime
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 import pandas as pd
@@ -16,13 +16,21 @@ import pickle
 from base.Sensor import Sensor
 from preprocessing.series import preprocess_simulation
 class Network:
-    def __init__(self, name):
+    def loadEvents(self):
+        path = "F:/manual/Tese/exploratory/wisdom/base/events/network_events_" + self.typeData
+        with open (path, 'rb') as fp:
+           self.events = pickle.load(fp)
+        return self.events
+    
+    def __init__(self, name, typeData='real',chosen_sensors=[],no_leaks=None,load=True):
         self.name = name
-        self.events = list()
+        self.events = dict()
         self.flowSensors = list()
         self.pressureSensors = list()
         self.sensors = list()
-
+        self.typeData = typeData
+        self.no_leaks = no_leaks
+        # real or simulated
         if name == "infraquinta":
             self.flowSensorsIds = [1, 2, 4, 6, 9, 10, 12, 14]
             self.pressureSensorsIds = [3, 5, 7, 8, 11, 13, 15]
@@ -47,6 +55,21 @@ class Network:
                 
             self.sensors += self.flowSensors
             self.sensors += self.pressureSensors
+            
+            if load:
+                self.loadEvents()
+            else:
+                if typeData == "simulated":
+                    for no_sensor in chosen_sensors:
+                        print("test simulated")
+                        print("no_sensor", no_sensor)
+                        new_df = preprocess_simulation(no_sensor, no_leaks)
+                        self.addSimulatedEvents(new_df)
+                else:
+                    db, cursor = database.make_connection("infraquinta")
+                    self.addAllEvents(db, cursor)
+                self.dumpEvents()
+            
           
     def getSensorNeighbors(self):
         return self.sensorNeighbors
@@ -57,6 +80,9 @@ class Network:
 
     def getSensorsIds(self):
         return self.flowSensorsIds + self.pressureSensorIds
+    
+    def getNoLeaks(self):
+        return self.no_leaks
     
     def getPressureSensorsIds(self):
         return self.pressureSensorsIds
@@ -71,7 +97,7 @@ class Network:
         return self.begin_date_data
     
     def addEvent(self, event):
-        self.events.append(event)
+        self.events[event.getId()] = event
     
     def addSimulatedEvents(self, df):
         isLeak = False
@@ -123,14 +149,10 @@ class Network:
         if dump:
             self.dumpEvents()
     
-    def loadEvents(self):
-        path = "F:/manual/Tese/exploratory/wisdom/base/network_events"
-        with open (path, 'rb') as fp:
-           self.events = pickle.load(fp)
-        return self.events
+  
         
     def dumpEvents(self):
-        path = "F:/manual/Tese/exploratory/wisdom/base/network_events"
+        path = "F:/manual/Tese/exploratory/wisdom/base/events/network_events_" + self.typeData
         with open(path, 'wb') as fp:
             pickle.dump(self.events, fp)
    
@@ -166,17 +188,18 @@ class Network:
                 return self.events[i]
         return None
     
-    def select_events(self, start, end):
-        start = datetime.strptime(start, '%d-%m-%Y %H:%M:%S')
-        end = datetime.strptime(end, '%d-%m-%Y %H:%M:%S')
-        size = len(self.events)
+    def select_events(self, start, end, time):
+        if time == 'date':
+            start = datetime.strptime(start, '%d-%m-%Y %H:%M:%S')
+            end = datetime.strptime(end, '%d-%m-%Y %H:%M:%S')
+       
         sevents = list()
-        for i in range(0, size):
-            estart = self.events[i].getStart()
-            eend = self.events[i].getEnd()
+        for event in self.events.values():
+            estart = event.getStart()
+            eend = event.getEnd()
          
             if start <= estart and end >= eend:
-                sevents.append(self.events[i])
+                sevents.append(event)
         return sevents
                 
         
@@ -217,19 +240,90 @@ class Network:
         plt.show()
         return encoded
     
-def test():
-    #db, cursor = database.make_connection("infraquinta")
-    network = Network("infraquinta")
-    #network.addAllEvents(db, cursor)
-    events = network.loadEvents()
+
+    def findMaxDate(events, form='end'):
+        """
+        events is list of object Event
+        Form: end or start
+        """ 
+        size = len(events)
+        maxDate = events[0]
+        for i in range(0, size):
+                point = 0
+                if form == 'end':
+                    point = events[i].getEnd()
+                elif form == 'start':
+                    point = events[i].getStart()
+                if point > maxDate:
+                    maxDate = point
+        return maxDate
+            
+            
     
+    def findMinDate(events, form='end'):
+        """
+        events is list
+        Form: end or start
+        """ 
+        size = len(events)
+        minDate = events[0]
+        for i in range(0, size):
+                point = 0
+                if form == 'end':
+                    point = events[i].getEnd()
+                elif form == 'start':
+                    point = events[i].getStart()
+                if point < minDate:
+                    minDate = point
+        return minDate
+    
+    def findSubSequenceWithEvent(timeseries, events, time):
+        """
+        Parameters
+        ----------
+        timeseries : dataframe with column 'date' or 'time'
+        events : TYPE
+            DESCRIPTION.
+        time: column that marks time.
+
+        Returns
+        -------
+        Selected part of time series that has events.
+
+        """
+        i = 0
+        columns = []
+        agg = pd.DataFrame()
+        for t in timeseries[time]:
+            for event in events:
+                if t >= event.getStart() and t <= event.getEnd():
+                    columns.append(timeseries.iloc[i,:])
+            i += 1
+        if columns != []:
+            agg = pd.concat(columns, names=['value', 'time'], axis=1)
+        return agg
+    
+    def findSubSequenceNoEvent(timeseries, events, time):
+        newtimeseries = Network.findSubSequenceWithEvent(timeseries, events, time)
+        subsequence = timeseries - newtimeseries
+        return subsequence
+    
+    
+    
+def test():
+    """
+    #db, cursor = database.make_connection("infraquinta")
+    network = Network("infraquinta", typeData="simulated", load=False)
+    #network.addAllEvents(db, cursor)
     new_df = preprocess_simulation('12', 18000)
     network.addSimulatedEvents(new_df)
-    print("Number of events:", network.countEvent())
+    events = network.dumpEvents()
+    """
     
-    start = "19-10-2017 04:45:00"  
-    end = "30-12-2017 23:45:00"
-    new_events = network.select_events(start, end)
-    print("number new events", len(new_events))
+    network = Network("infraquinta", typeData="simulated", chosen_sensors=['12'],no_leaks=20, load=False)
+    print("Number of events:", network.countEvent())
+    print("events", network.getEvents())
+    
+  
    
     
