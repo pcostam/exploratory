@@ -9,6 +9,7 @@ import pandas as pd
 import datetime
 from epanettools.epanettools import EPANetSimulation, Node, Link, Network, Nodes, Links, Patterns, Pattern, Controls, Control # import all elements needed
 from epanettools.examples import simple # this is just to get the path of standard examples
+import re
 
 pressure_base_filename =  "Rotura_Pnova"
 real_pressure_base_filename = "Pressao_SensorMeioRede"
@@ -56,7 +57,8 @@ from os.path import isfile, join
 pathtxt = path_init + "\\simulated\\fugas_txt\\"
 pathflowtxt =  path_init + "\\simulated\\fugas_txt\\Rotura_Q\\"
 pathpressuretxt = path_init + "\\simulated\\fugas_txt\\Rotura_Pnova\\"
-files = [f for f in listdir(pathtxt) if isfile(join(pathtxt, f))]
+files = []
+#files = [f for f in listdir(pathtxt) if isfile(join(pathtxt, f))]
 
 flowfiles = [f for f in listdir(pathflowtxt) if isfile(join(pathflowtxt, f))]
 flow_files = [namefile for namefile in flowfiles if flow_base_filename in namefile]
@@ -64,11 +66,8 @@ flow_files = [namefile for namefile in flowfiles if flow_base_filename in namefi
 pressurefiles = [f for f in listdir(pathpressuretxt) if isfile(join(pathpressuretxt, f))]
 pressure_files = [namefile for namefile in pressurefiles if pressure_base_filename in namefile]
 
-files += pressurefiles  
 files += flowfiles
-print("Number of flow files", len(flow_files))
-print("Number of pressure files", len(pressure_files))
-
+#files += pressurefiles  
 print("Export initiated")
 
 
@@ -81,6 +80,7 @@ def write_format_leaks(df, no_leak, path_init, new_filename):
     df["time"] = times
     df["leak"] = 0
     df = abs(df)
+    path_map = path_init + "\\simulated\\mapeamento_fugas\\TabelaArquivoFinal.xlsx"
     df_map = pd.read_excel(path_map)
     base = "Rotura_P"
     filename = base + str(no_leak) + ".txt"
@@ -105,59 +105,69 @@ def write_format_leaks(df, no_leak, path_init, new_filename):
 #1 ficheiro txt com os dados das 18696 roturas,
 # em que cada linha corresponde a um time step de 600 segundos (10 minutos), 
 #começando no t=0, e cada coluna a uma rotura.
-for file in files:
-    
-    print("  " + str(file))
-    
-    path_import = path_init + "\\simulated\\fugas_txt\\" + file 
-    
-    path_map = path_init + "\\simulated\\mapeamento_fugas\\TabelaArquivoFinal.xlsx"
-    
-    df = pd.read_csv(path_import, sep="  ", header=None)
-    
-    no_leak = 0
-    folder = ""
-    new_filename = ""
-    base_filename = ""
-
-    if (pressure_base_filename in file):
-        #does not correspond to real sensors
-        base_filename = pressure_base_filename
-        folder = "fugas_P"
-        new_filename = "pressure_leak"
-        no_leak = file[file.index(base_filename) + len(base_filename):]
-        write_format_leaks(df, no_leak, path_init, new_filename)
-        print("end")
-            
-    elif (flow_base_filename in file):
-    
-      map_id = epanet_to_scada_flow
-      #transform INP name to EPANET name
-      #corresponds to real sensor
-      new_tg_links = [map_id[name] for name in tg_links]
-      df.columns = new_tg_links
-      base_filename = flow_base_filename
-      folder = "fugas_Q"
-      new_filename = "flow_leak"
-      no_leak = file[file.index(base_filename) + len(base_filename):]
-      write_format_leaks(df, no_leak, path_init, new_filename)
-      print("end")
+i = 0
+for file in files[10775:]:
+    i += 1
+    try:
+        print("  " + str(file))
         
-    elif (real_pressure_base_filename in file):
-        #each column is a leak and not a sensor. 
-        #Line is a sensor - a middle pressure sensor
-        base_filename = real_pressure_base_filename 
-        folder = "fugas_P_real"
-        new_filename = "P_real"
-        #write each leak in a file
-        no_leak = 1
-        for column in df.columns:   
-            new = df.filter([column], axis=1)
-            no_leak += 1
-            write_format_leaks(new, no_leak, path_init, new_filename)
-        print("end")
+        path_import = path_init + "\\simulated\\fugas_txt\\" + file 
+        
+       
+       
+        
+        no_leak = 0
+        folder = ""
+        new_filename = ""
+        base_filename = ""
+        """
+        if (pressure_base_filename in file):
+            #does not correspond to real sensors
+            base_filename = pressure_base_filename
+            folder = "fugas_P"
+            new_filename = "pressure_leak"
+            no_leak = re.search(r'\d+', file).group()
+            write_format_leaks(df, no_leak, path_init, new_filename)
+            print("end")
+        """       
+        if (flow_base_filename in file):
+          path_import = path_init + "\\simulated\\fugas_txt\\Rotura_Q\\" + file 
+          df = pd.read_csv(path_import, sep="  ", header=None)
+          map_id = epanet_to_scada_flow
+          #transform INP name to EPANET name
+          #corresponds to real sensor
+          new_tg_links = [map_id[name] for name in tg_links]
+          df.columns = new_tg_links
+          base_filename = flow_base_filename
+          folder = "fugas_Q"
+          new_filename = "flow_leak"
+          no_leak = re.search(r'\d+', file).group()
+          print("no leak", no_leak)
+          write_format_leaks(df, no_leak, path_init, new_filename)
+          print("end")
           
-    
+        """
+        elif (real_pressure_base_filename in file):
+            #each column is a leak and not a sensor. 
+            #Line is a sensor - a middle pressure sensor
+            base_filename = real_pressure_base_filename 
+            folder = "fugas_P_real"
+            new_filename = "P_real"
+            #write each leak in a file
+            no_leak = 1
+            for column in df.columns:   
+                new = df.filter([column], axis=1)
+                no_leak += 1
+                write_format_leaks(new, no_leak, path_init, new_filename)
+            print("end")
+        """
+    except:
+            f = open("failed_simulated_leaks.txt", "w")
+            print("Failed to Run")
+            f.write('Failed to run index {}\n'.format(i))
+            f.close()
+            break
+   
 
 
 print("Export completed")

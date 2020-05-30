@@ -1,6 +1,6 @@
 <configuration>
     <database host="localhost" user="root" pw="banana"></database>
-    <path>F:\Tese\exploratory\wisdom\dataset\</path> 
+    <path>F:\manual\Tese\exploratory\wisdom\dataset\</path> 
     <wme name="infraquinta" sensors="15"></wme>
     <!--<wme name="barreiro" sensors="3"></wme>-->
     <!--<wme name="beja" sensors="2"></wme>-->
