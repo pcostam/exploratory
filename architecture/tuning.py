@@ -8,6 +8,9 @@ from skopt.space import Integer, Real
 from skopt.callbacks import DeltaYStopper
 from keras.backend import clear_session
 from skopt import gp_minimize
+from skopt import Optimizer
+from joblib import Parallel, delayed
+
 #https://medium.com/@crawftv/parameter-hyperparameter-tuning-with-bayesian-optimization-7acf42d348e1
 #https://www.kdnuggets.com/2019/06/automate-hyperparameter-optimization.html
 #num_pooling_layers, stride_size, kernel_size, no_filters
@@ -38,12 +41,68 @@ def get_param_encdec(timesteps):
     return dimensions, default_parameters
 
 
-def do_bayesian_optimization(fitness, dimensions, default_parameters):
+def verifyConditions(parameters, timesteps, n_seq):
+    print("verifyConditions")
+    num_pooling_layers = parameters[0] 
+    stride_size = parameters[1]
+    kernel_size = parameters[2] 
+    no_filters = parameters[3]
+    num_encdec_layers = parameters[4]
+    batch_size = parameters[5] 
+    learning_rate = parameters[6] 
+    drop_rate_1 = parameters[7]
+    
+    print("kernel_size:", kernel_size)
+   
+    if (kernel_size % 2) == 0:
+        print("False 1")
+        return False
+    if batch_size > timesteps:
+        print("False 2")
+        return False
+    if kernel_size > (timesteps * n_seq):
+        print("False 3")
+        return False
+    
+    #num_encdec_layers?
+    
+    print("True")
+    return True
+
+def do_bayesian_optimization(fitness, dimensions, default_parameters, timesteps, n_seq):
     print("START BAYESIAN OPTIMIZATION")
     print("fitness", fitness)
     print("dimensions", len(dimensions))
     print("default parameters", len(default_parameters))
+    param = []
+    
+    opt = Optimizer(dimensions=dimensions,
+                    acq_func='EIps')
+    n_calls = 11
+    i = 0
+    res = []
+    while i != n_calls:
+        next_x = list()
+        if i == 0:
+            next_x = default_parameters
+        else:
+            next_x = opt.ask()
+            
+        while verifyConditions(next_x, timesteps, n_seq)==False:
+            next_x = opt.ask()
+            
+        if verifyConditions(next_x, timesteps, n_seq):
+            f_val = fitness(next_x) 
+            res = opt.tell(next_x, f_val)
+            i += 1
+       
+    
+    clear_session()
+    return res
+            
         
+    
+    """
     es = DeltaYStopper(0.01)
     
     gp_result = gp_minimize(func=fitness,
@@ -58,6 +117,9 @@ def do_bayesian_optimization(fitness, dimensions, default_parameters):
     print("END BAYESIAN OPTIMIZATION")
     param = gp_result.x     
     clear_session()
+    """
+    
+    
     
     return param 
 

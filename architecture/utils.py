@@ -16,6 +16,9 @@ from keras.models import load_model
 import base64
 from io import BytesIO
 import seaborn as sns
+from preprocessing.seasonality import seasonal_adjustment, inverse_difference
+from sklearn.model_selection import KFold
+from scipy.stats import norm
 
 def get_mu(vector):
     return np.mean(vector, axis=0)
@@ -32,7 +35,32 @@ def get_sigma(vector, mu):
      return sigma
     
 #https://scipy-lectures.org/intro/numpy/operations.html
-def get_error_vector(x_input, x_output, timesteps, n_features): 
+def get_error_vector(x_input, x_output, x_inv, scaler, timesteps, n_features): 
+    """
+    Inverses transform
+
+    Parameters
+    ----------
+    x_input : TYPE
+        DESCRIPTION.
+    x_output : TYPE
+        DESCRIPTION.
+    timesteps : TYPE
+        DESCRIPTION.
+    n_features : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    vector : TYPE
+        DESCRIPTION.
+
+    """
+    
+    #inverse transform for forecasting
+    x_output = inverse_transform(x_output, x_inv, scaler, adjustment=False)
+    x_input = inverse_transform(x_input, x_inv, scaler, adjustment=False)
+        
     x_input = process_predict(x_input, timesteps, n_features)
     x_output = process_predict(x_output, timesteps, n_features)   
     
@@ -114,10 +142,15 @@ def plot_training_losses(history):
     
     return encoded
     
-def plot_bins_loss(loss):
-    figure = plt.figure(figsize=(16,9), dpi=80)
-    plt.title('Loss Distribution', fontsize=16)
-    sns.distplot(loss, bins=20, kde=True, color='blue')
+def plot_bins_loss(title, x, to_fit=None, scale=None, loc=None, bins=20):
+    figure, ax = plt.subplots(figsize=(16,9), dpi=80)
+    plt.title(title, fontsize=16)
+    sns.distplot(x, kde=True, color='blue')
+ 
+    
+    if to_fit == 'normal':
+        sns.distplot(x, fit=norm, kde=False, color='red')
+        
     #plt.show()
     tmpfile = BytesIO()
     figure.savefig(tmpfile, format='png')
@@ -172,15 +205,61 @@ def preprocess(raw, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None,
     data = preprocess_shapes(data, timesteps, form, input_data=input_data, n_seq=n_seq, n_input=n_input, n_features=n_features, dates=dates)
     
     return data
+
+def fit_data(data, scaler):
+    """
+    
+
+    Parameters
+    ----------
+    data : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    scaler : TYPE
+        DESCRIPTION.
+
+    """
+    #normalize data
+    if scaler == None:
+        scaler = MinMaxScaler()
+    scaler.partial_fit(data.values)
+   
+    return scaler
+
+def fit_transform_data(data):
+    scaler = MinMaxScaler()
+    values = scaler.fit_transform(data.values)
+    scaled = pd.DataFrame(values, index=data.index, columns=data.columns)
+    return scaled
+    
+
+def transform_sequence(data, adjustment=True):
+     if adjustment:
+        data = seasonal_adjustment(data, '15min', lag='W')
+     return data
+    
+    
+def transform_data(data, scaler):
+    values = scaler.transform(data.values)
+    scaled = pd.DataFrame(values, index=data.index, columns=data.columns)
+    data = scaled
+     
+    return data
+
+def inverse_transform(transformed, data, scaler, adjustment=True):
+    inverted = scaler.inverse_transform(transformed)
+    if adjustment:
+        inverted = np.array([inverse_difference(data[i], inverted[i]) for i in range(len(inverted))])
+    return inverted 
+
 def preprocess_shapes(data, timesteps, form="3D", input_data=pd.DataFrame(), n_seq=None, n_input=None, n_features=None, dates=False):
     if form == "4D":
         print("n_input", n_input)
         data = np.array(data.iloc[:, :n_input*n_features])
-        print("data shape", data.shape)
-        #normalize data
-        scaler = MinMaxScaler()
-        data = scaler.fit_transform(data)
-
+        print("data shape", data.shape)   
+        #data = transform_data(data)
         #for CNN there is the need to reshape de 2-d np array to a 4-d np array [samples, timesteps, features]
         #[batch_size, height, width, depth]
         #[samples, subsequences, timesteps, features]
@@ -208,10 +287,9 @@ def preprocess_shapes(data, timesteps, form="3D", input_data=pd.DataFrame(), n_s
             data = data.values
       
             y_train = data[:, :n_features]
-
-            scaler = MinMaxScaler()
-            y_train = scaler.fit_transform(y_train)
-
+            
+            #y_train = transform_data(y_train)
+        
             y_train =  np.squeeze(y_train)
             y_train = np.reshape(y_train, (y_train.shape[0], n_features))
          
@@ -221,9 +299,7 @@ def preprocess_shapes(data, timesteps, form="3D", input_data=pd.DataFrame(), n_s
         data = np.array(data.iloc[:, :timesteps*n_features])
         print("data", data.shape)
     
-        #normalize data
-        scaler = MinMaxScaler()
-        data = scaler.fit_transform(data)
+        #data = transform_data(data)
 
         #for lstm there is the need to reshape de 2-d np array to a 3-d np array [samples, timesteps, features]
         data = data.reshape((data.shape[0], timesteps, n_features))
@@ -242,8 +318,7 @@ def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
         y_train_full = data[:, :n_features]
    
     
-    scaler = MinMaxScaler()
-    y_train_full = scaler.fit_transform(y_train_full)
+    #y_train_full = transform_data(y_train_full)
     
     y_train_full =  np.squeeze(y_train_full)
     
@@ -253,6 +328,7 @@ def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
 def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None, dates=False):       
     print(">>>>generate_sets")
     print("N_features", n_features)
+    print("raw", len(raw))
     if validation:
         return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features, dates=dates)
 
@@ -307,14 +383,15 @@ def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D", 
      
      print("X_val_1", X_val_1.shape)
      print("y_val_1", y_val_1.shape)
+     print("type", type(Xval_1))
      
      return Xtrain, y_train, Xval_1, y_val_1, Xval_2, y_val_2
  
-def save_parameters(mu, sigma, timesteps, min_th, filename):
+def save_parameters(scaler, mu, sigma, timesteps, min_th, filename):
     print("save parameters")
-    param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'min_th':min_th}
+    param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'min_th':min_th, 'scaler': scaler}
     filename = 'parameters_' + filename + '.pickle'
-    path = os.path.join("..//gui_margarida//gui/assets", filename)
+    path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", filename)
     with open(path, 'wb') as f:  
         pickle.dump(param, f, protocol=pickle.HIGHEST_PROTOCOL)
     return True
@@ -322,14 +399,8 @@ def save_parameters(mu, sigma, timesteps, min_th, filename):
 def load_parameters(filename):
     global mu, sigma, timesteps, min_th
     filename = 'parameters_' + filename + '.pickle'
-    current_dir = os.getcwd()
-    print("current dir", current_dir)
-    path = ""
-    if current_dir == "F:\\manual\\Tese\exploratory\\wisdom\\architecture":
-        path = os.path.join("..//gui_margarida//gui//assets", filename)
-    else:
-        path = os.path.join(current_dir + '//assets//' + filename)
-    
+    path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", filename)
+ 
     # Getting back the objects:
     with open(path, 'rb') as f:  
         param = pickle.load(f)
@@ -361,34 +432,29 @@ def generate_days(X_train_D, n_input, time, validation=True):
           
         X_val_1 = X_val.iloc[:size_val, :]
         X_val_2 = X_val.iloc[size_val:, :]
-        
-       
-    
-        return X_train[time], X_val_1[time], X_val_2[time]
+   
+        return X_train.index.values, X_val_1.index.values, X_val_2.index.values
     else:
-        return X_train[time]
+        return X_train.index.values
 
 def drop_date(df):
     df = df.drop(['date'], axis = 1)
     return df
 
-def detect_anomalies(X_test, y_test, X_test_D, h5_filename, timesteps, n_features, choose_th=None, time='date'):
-    param = load_parameters(h5_filename)
 
+def make_score(X_test, y_test, y_inv, h5_filename, timesteps, n_features, choose_th=None, time='date'):
+    param = load_parameters(h5_filename)
     filename = h5_filename + '.h5'
     current_dir = os.getcwd()
     print("current dir", current_dir)
-    path = ""
-    if current_dir == "F:\\manual\\Tese\exploratory\\wisdom\\architecture":
-        path = os.path.join("..//gui_margarida//gui//assets", filename)
-    else:
-        path = os.path.join(current_dir + '//assets//' + filename)
+    path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets",  filename)
         
     model = load_model(path) 
     
     mu = param['mu']
     sigma = param['sigma']
     timesteps = param['timesteps']
+    scaler = param['scaler']
     print("mu", mu)
     print("sigma", sigma)
     print("timesteps", timesteps)
@@ -402,37 +468,71 @@ def detect_anomalies(X_test, y_test, X_test_D, h5_filename, timesteps, n_feature
     print("Predict")
     y_pred = model.predict(X_test)
 
-    predict = pd.DataFrame()
-    
-    print("y_test shape", y_test.shape)
-    print("y_pred shape", y_pred.shape)
-    
-    vector = get_error_vector(y_test, y_pred, timesteps, n_features)
+    ####### INVERSE TRANSFORM
+    vector = get_error_vector(y_test['value'].values.reshape(-1,1), y_pred, y_inv, scaler, timesteps, n_features)
     vector = np.squeeze(vector)
         
     score = anomaly_score(mu, sigma, vector, n_features)
-    
+    return score, anomalies_th
+
+def make_prediction(score, X_test, y_test, h5_filename, timesteps, n_features, choose_th=None, time='date'):
     values = list()
     dates = list()
+    mask = list()
+    predict = pd.DataFrame()
     anomalies = 0
     i = 0
-    for sc in score:
-        if sc > anomalies_th:
-             anomalies += 1
-             value = X_test_D['value'].iloc[i]
-             date = X_test_D[time].iloc[i]
-             dates.append(date)
-             values.append(value)
-        i += 1
-        
-    print("no. anomalies", anomalies)
-    print("predict", predict)
     
+   
+    for sc in score:
+        date = y_test.index.values[i]
+        value = y_test['value'].values[i]
+        dates.append(date)
+        values.append(value)
+        if sc > choose_th:
+             anomalies += 1
+             mask.append(True)
+        else:
+             mask.append(False)
+            
+        i += 1
+    print("Number of anomalies in detect_anomalies", anomalies)
+ 
     predict['value'] = values
-    predict[time] = dates
+    predict['is_anomaly'] = mask
+    if time == 'date':
+        dates = pd.to_datetime(dates)
+    predict.index = dates
     print("end")
+    print("rows predict", predict.shape[0])
     return predict
 
+def detect_anomalies(X_test, y_test, y_inv, h5_filename, timesteps, n_features, choose_th=None, time='date'):    
+    score, anomalies_th = make_score(X_test, y_test, y_inv, h5_filename, timesteps, n_features, choose_th=choose_th, time=time)
+    predict = make_prediction(score, X_test, y_test, h5_filename, timesteps, n_features, choose_th=anomalies_th, time=time)
+    return predict
+
+def avgAnomalyScore(score, min_th, network, X_test_D):
+     i = 0
+     events = network.getEvents()
+     curr_id_event = None
+     anomaly_scores = list()
+     for sc in score:
+        date = X_test_D.index.values[i]
+        for event in events:
+            if date >= event.getStart() and date <= event.getEnd():
+                id_event = event.getId()
+                #there is a new event
+                if curr_id_event != id_event:
+                    event = network.getEventById(curr_id_event)
+                    event.setAvgAnomalyScore(np.mean(np.array(anomaly_scores)))  
+                    curr_id_event = id_event
+                    anomaly_scores = list()
+                #its the same event    
+                anomaly_scores.append(X_test_D['value'].iloc[i]) 
+        i += 1
+    
+    
 def join_partitions_features(train_chunks_all, no_partitions_cv,to_exclude):
     """Concatenates information of several sensors"""
     train_chunks = list()
@@ -483,3 +583,13 @@ def test():
   
    return df_other
    
+def split_folds(data, n_folds=3):
+    rows = data.shape[0]
+    split = round(rows/3)
+    res = []
+    pivot = 0
+    while pivot < rows:
+        pivot += split
+        res.append(data[:pivot])
+        data = data[pivot:]
+    return res

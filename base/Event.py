@@ -8,13 +8,20 @@ Created on Sat Feb 22 12:08:27 2020
 class Event:
     events = list()
     id_counter = 0
-    def __init__(self, start, end, name, events=[]):
+    def __init__(self, start, end, name, events=[], id_event=None):
         self.start = start
         self.end = end
         self.name = name
-        Event.id_counter += 1
-        self.id = Event.id_counter
+        if id_event == None:
+            Event.id_counter += 1
+            self.id = Event.id_counter
+        else:
+            self.id = id_event
+            
         self.events = events
+        self.avg_flow = None
+        self.coef = None
+        self.avgAnomalyScore = None
         
     def getId(self):
         return self.id
@@ -30,3 +37,13 @@ class Event:
     
     def getEnd(self):
         return self.end
+    
+    def setAvgFlow(self, average_flow):
+        self.avg_flow = average_flow
+        
+    def setCoef(self, coef):
+        self.coef = coef
+        
+    def setAvgAnomalyScore(self, avgAnomalyScore):
+        self.avgAnomalyScore = avgAnomalyScore
+        

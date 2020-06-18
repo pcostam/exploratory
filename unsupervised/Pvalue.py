@@ -7,7 +7,7 @@ Created on Tue Feb  4 16:38:28 2020
 
 from sklearn.neighbors import KernelDensity
 from sklearn.model_selection import GridSearchCV
-from sklearn.externals import joblib
+import joblib
 from scipy.stats import norm, combine_pvalues
 
 import numpy as np

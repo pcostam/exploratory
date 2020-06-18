@@ -10,24 +10,58 @@ from preprocessing.series import create_dataset
 from sqlalchemy import create_engine
 
 def missing_values(df):
+    print("missing values")
+    print("before", df.head())
     df['value'][(df['value'] < 0) | (df['value'] == 0)] = np.nan
-    df = df.interpolate(method='slinear')
-    df = df.interpolate(method='nearest').ffill().bfill()
+    print("Number of nan values:",  df.isna().sum())
+    print(df.head())
+    print(df.shape)
+    df = df.interpolate(method='time')
+    df = df.resample('1min')
+    df = df.interpolate(method='slinear').ffill().bfill()
+    print("after", df[:9])
+    print("Number of nan values:",  df.isna().sum())
     return df
 
-def alignment(df):    
-    return df.resample('1min').interpolate(method='time')
-
+def alignment(df):   
+    print("aligment")
+    print("before", df.head())
+    print("Number of nan values:",  df.isna().sum())
+    print(list(df.columns))
+    print(df.columns)
+    print("dtypes", df.dtypes)
+    df = df[['value']]
+    df['value'] = pd.to_numeric(df['value'])
+    print("dtypes", df.dtypes)
+    print("index", type(df.index))
+    print(df.columns)
+    df = df.reset_index()
+    df = df.set_index(['date'])
+    resampled = df.resample('1min')
+    df = df.reset_index()
+    df = df.set_index(['date'])
+    interpolated = resampled.interpolate(method='nearest')
+    print("after", interpolated.head())
+    print("Number of nan values:",  interpolated.isna().sum())
+    # interpolated = interpolated.interpolate(method='nearest').ffill().bfill()
+    #print("Number of nan values:",  interpolated.isna().sum())
+    return interpolated 
+  
+    
 
 def test():
-    df = create_dataset("sensortgmeasure", "1", limit=False)
+    df = create_dataset("sensortgmeasure", "1", limit=True)
+    print(df.head())
     df['date'] = pd.to_datetime(df['date'])
-    df = df.drop(['sensortgId', 'id'], axis = 1)
     df = df.set_index('date')
-    df = alignment(df)
     df = missing_values(df)
-    print(df)
+    #df = alignment(df)
+    #df = missing_values(df)
+    print(df.head())
+    #
+    #print(df.head())
  
+#create table sensortgmeasurepp
 def populate():
     df_list = list()
     

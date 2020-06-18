@@ -22,6 +22,7 @@ from scipy.stats import boxcox, yeojohnson
 import time
 from report import image, HtmlFile, tag, Text
 from base.Network import Network
+from scipy.stats import kstest
  
 class Stats(object):
     flowSensorsIds = [1, 2, 4, 6, 9, 10, 12, 14]
@@ -209,37 +210,87 @@ class Stats(object):
     def date_N_days_ago(date, days):
         return date - datetime.timedelta(days=days)     
     
-    def check_for_normality(sample):
+    def check_for_normality(file, sample):
         # normality test Shapiro-Wilk test
+        text = 'Performing Shapiro-Wilk test'
+        file.append(Text.Text(text)) 
+        print(text)
+        
         stat, p = shapiro(sample)
-        print('Statistics=%.3f, p=%.3f' % (stat, p))
+        text = 'Statistics=%.3f, p=%.3f' % (stat, p)
+        file.append(Text.Text(text)) 
+        print(text)
         # interpret
         alpha = 0.05
         if p > alpha:
-            print('Sample looks Gaussian (fail to reject H0)')
+            text = 'Sample looks Gaussian (fail to reject H0)'
+            file.append(Text.Text(text)) 
+            print(text)
+
         else:
-            print('Sample does not look Gaussian (reject H0)')
-            
-        #normality test d'agostino        
+            text = 'Sample does not look Gaussian (reject H0)'
+            file.append(Text.Text(text)) 
+            print(text)
+           
+        #normality test d'agostino    
+        text = 'Performing D\'Agostino test'
+        file.append(Text.Text(text)) 
+        print(text)
+        
         stat, p = normaltest(sample)
-        print('Statistics=%.3f, p=%.3f' % (stat, p))
+        text = 'Statistics=%.3f, p=%.3f' % (stat, p)
+        file.append(Text.Text(text)) 
+        print(text)
+      
         # interpret
         alpha = 0.05
         if p > alpha:
-            print('Sample looks Gaussian (fail to reject H0)')
+            text = 'Sample looks Gaussian (fail to reject H0)'
+            file.append(Text.Text(text)) 
+            print(text)
         else:
-            print('Sample does not look Gaussian (reject H0)')
+            text = 'Sample does not look Gaussian (reject H0)'
+            file.append(Text.Text(text)) 
+            print(text)
             
         #anderson-darling test
+        text = 'Performing Anderson test'
+        file.append(Text.Text(text)) 
+        print(text)
+        
         result = anderson(sample)
-        print('Statistic: %.3f' % result.statistic)
+        text = 'Statistic: %.3f' % result.statistic
+        file.append(Text.Text(text)) 
+        print(text)
+        
         p = 0
         for i in range(len(result.critical_values)):
             sl, cv = result.significance_level[i], result.critical_values[i]
             if result.statistic < result.critical_values[i]:
-                print('%.3f: %.3f, data looks normal (fail to reject H0)' % (sl, cv))
+                text = '%.3f: %.3f, data looks normal (fail to reject H0)' % (sl, cv)
+                file.append(Text.Text(text)) 
+                print(text)
             else:
-                print('%.3f: %.3f, data does not look normal (reject H0)' % (sl, cv))
+                text = '%.3f: %.3f, data does not look normal (reject H0)' % (sl, cv)
+                file.append(Text.Text(text)) 
+                print(text)
+                
+        #Ks test
+        text = 'Performing Ks test'
+        file.append(Text.Text(text)) 
+        print(text)
+        
+        ks_stat, ks_pvalue = kstest(sample, 'norm')
+        if ks_pvalue >= alpha:
+            text ="Sample does look normal" 
+            print(text)
+            file.append(Text.Text(text))
+        else:
+            text = "Sample does not look normal"
+            print(text)
+            file.append(Text.Text(text))
+            
+    
     
     def write_report(file_name):
         Stats.file.writeToHtml(file_name)

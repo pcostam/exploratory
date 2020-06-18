@@ -8,7 +8,7 @@ Created on Thu May 28 16:25:57 2020
 
 import pandas as pd
 from matplotlib import pyplot as plt
-    
+import numpy as np
 def difference(dataset, interval=1):
     """
     Parameters
@@ -72,34 +72,26 @@ def test_dataset():
     print(df.head())
     return df
 
-def seasonal_adjustment(data=[], granularity='M', lag='Y'):
-    data['date'] = pd.to_datetime(data['date'])
-    data.set_index(['date'], drop=True, inplace=True)
+def seasonal_adjustment(data, granularity='M', lag='Y'):
     #print(data.head())
     #data = pd.read_csv('daily-min-temperatures.csv', header=0, index_col=0)
-    print(data.index)
-    print(data.columns)
     #data = test_dataset()
-   
+  
     X = data.values
-    
+
     fig1, ax1 = plt.subplots()
     ax1.plot(data.index, X)
     plt.show()
-    
-    
+
     inter = calculate_interval(granularity, lag=lag)
     print("inter", inter)
-    diff_values = difference(X, interval=inter)
-    diff = pd.DataFrame({'value': diff_values})
-    diff.index = data.index[inter:]
-    print(diff[:5])
+    values = difference(X, interval=inter)
+    diff = pd.DataFrame(values, index=data.index[inter:], columns=data.columns)
+
     fig2, ax2 = plt.subplots()
     ax2.plot(diff)
     plt.show()
-    
-    diff['date'] = diff.index.copy()
-    diff.index = pd.RangeIndex(start=0, stop=diff.shape[0]) 
+
     return diff
 
 

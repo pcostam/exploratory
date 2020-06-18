@@ -29,7 +29,6 @@ from skopt.utils import use_named_args
 from skopt.callbacks import DeltaYStopper
 import tuning
 from skopt.utils import use_named_args
-from skopt.callbacks import DeltaYStopper
 import utils
 import time
 import tensorflow
@@ -40,6 +39,7 @@ from preprocessing.series import downsample, rolling_out_cv, generate_total_sequ
 from keras.layers import Bidirectional
 from architecture.cnn_biLSTM import CNN_BiLSTM
 from architecture.scb_lstm import SCB_LSTM
+from utils import fit_transform_data, split_folds
 import math
 #see https://machinelearningmastery.com/how-to-develop-deep-learning-models-for-univariate-time-series-forecasting/
 #https://towardsdatascience.com/get-started-with-using-cnn-lstm-for-forecasting-6f0f4dde5826
@@ -263,6 +263,7 @@ class CNN_LSTM(EncDec):
     config = default_parameters
     
     def __init__(self, type_model="multi-channel", model_name="CNN-LSTM", report_name=None):  
+        CNN_LSTM.type_model = type_model
         CNN_LSTM.config = CNN_LSTM.default_parameters
         print("model_name", model_name)
         if model_name == "CNN-LSTM":
@@ -319,58 +320,49 @@ class CNN_LSTM(EncDec):
         print("fitness>>>")
         CNN_LSTM.no_calls_fitness += 1
         print("Number of calls to fitness", CNN_LSTM.no_calls_fitness)
-    
-        #EncDec.n_steps
-        n_steps = parameters.get_n_steps()
-        n_features = parameters.get_n_features() 
-        #ncDec.n_features
+     
+        n_steps = EncDec.parameters.get_n_steps()
+        n_features = EncDec.parameters.get_n_features() 
+
+        n_seq = EncDec.parameters.get_n_seq()
+        n_input = EncDec.parameters.get_n_input()
+        normal_sequence = EncDec.normal_sequence
+        normal_sequence = utils.fit_transform_data(normal_sequence)
         
-        sequence = generate_total_sequence("12", "sensortgmeasurepp",start=CNN_LSTM.stime, end=CNN_LSTM.etime)
-        train_chunks, test_chunks = rolling_out_cv(sequence, 8640)
-                
-        normal_sequence, test_sequence = generate_sequences("12", "sensortgmeasurepp", df_to_csv=True)
-        normal_sequence = generate_normal("12", df_to_csv = True)
-        
-        n_seq = CNN_LSTM.parameters.get_n_seq()
-        print("n_seq", n_seq)
-        n_input = CNN_LSTM.parameters.get_n_input()
-        print("n_input", n_input)
-        X_train_full, y_train_full = utils.generate_full(normal_sequence,n_steps, input_form=CNN_LSTM.input_form, output_form=CNN_LSTM.output_form, n_seq=CNN_LSTM.parameters.get_n_seq(),n_input=CNN_LSTM.parameters.get_n_input(), n_features=CNN_LSTM.parameters.get_n_features())
-        
-        kernel_size=5
-        stride_size=2
-        no_filters=15
-       
-        config = [num_pooling_layers, stride_size, kernel_size, no_filters, num_encdec_layers, batch_size, learning_rate,  drop_rate_1]
-        
-       
-        print("Num pooling layers", num_pooling_layers)
-        print("Stride size", stride_size)
-        print("Kernel size", kernel_size)
-        print("No filters", no_filters)
-        print("EncDec layers", num_encdec_layers)
-        print("Batch size", batch_size)
-        print("Learning rate", learning_rate)
-        print("Drop rate",drop_rate_1)
-        input_data = utils.split_features(CNN_LSTM.parameters.get_n_features(), X_train_full)
-        model = CNN_LSTM.type_model_func(X_train_full, y_train_full, config) 
-        k = len(train_chunks)
+        folds = split_folds(normal_sequence, n_folds=3)
+        print("len folds", len(folds))
         all_losses = list()
-          
-        X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(normal_sequence, n_steps,input_form =  CNN_LSTM.input_form, output_form = CNN_LSTM.output_form, validation=True, n_seq=CNN_LSTM.parameters.get_n_seq(),n_input=CNN_LSTM.parameters.get_n_input(), n_features=CNN_LSTM.parameters.get_n_features())
-        es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
-        input_data = list()
+        for fold in folds:
+            normal_sequence = fold
+            X_train_full, y_train_full = utils.generate_full(normal_sequence,n_steps, input_form = CNN_LSTM.input_form, output_form = CNN_LSTM.output_form, n_seq=n_seq,n_input=n_input, n_features=n_features)
+            config = [num_pooling_layers, stride_size, kernel_size, no_filters, num_encdec_layers, batch_size, learning_rate,  drop_rate_1]
+            print("Num pooling layers", num_pooling_layers)
+            print("Stride size", stride_size)
+            print("Kernel size", kernel_size)
+            print("No filters", no_filters)
+            print("EncDec layers", num_encdec_layers)
+            print("Batch size", batch_size)
+            print("Learning rate", learning_rate)
+            print("Drop rate",drop_rate_1)
+            input_data = utils.split_features(CNN_LSTM.parameters.get_n_features(), X_train_full)
+            model = CNN_LSTM.type_model_func(X_train_full, y_train_full, config) 
+           
             
-        print("CNN_LSTM TYPE", CNN_LSTM.type_model)
-        hist = None
-        if CNN_LSTM.type_model == "multi-channel":
-              hist = model.fit(X_train, y_train, validation_data=(X_val_1, y_val_1), epochs=100, batch_size= batch_size, callbacks=[es])
-        elif CNN_LSTM.type_model == "multi-head":
-                input_data = utils.split_features(CNN_LSTM.parameters.get_n_features(), X_train)
-                hist = model.fit(input_data, y_train, validation_data=(X_val_1, y_val_1), epochs=200, batch_size=batch_size, callbacks=[es])
-              
-        loss = hist.history['val_loss'][-1]
-        all_losses.append(loss)
+            X_train, y_train, X_val_1, y_val_1, X_val_2, y_val_2 = utils.generate_sets(normal_sequence, n_steps,input_form =  CNN_LSTM.input_form, output_form = CNN_LSTM.output_form, validation=True, n_seq=CNN_LSTM.parameters.get_n_seq(),n_input=CNN_LSTM.parameters.get_n_input(), n_features=CNN_LSTM.parameters.get_n_features())
+            es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
+            input_data = list()
+                
+            print("CNN_LSTM TYPE", CNN_LSTM.type_model)
+            hist = None
+            if CNN_LSTM.type_model == "multi-channel":
+                  hist = model.fit(X_train, y_train, validation_data=(X_val_1, y_val_1), epochs=100, batch_size= batch_size, callbacks=[es])
+            
+            elif CNN_LSTM.type_model == "multi-head":
+                  input_data = utils.split_features(CNN_LSTM.parameters.get_n_features(), X_train)
+                  hist = model.fit(input_data, y_train, validation_data=(X_val_1, y_val_1), epochs=200, batch_size=batch_size, callbacks=[es])
+                  
+            loss = hist.history['val_loss'][-1]
+            all_losses.append(loss)
             
          
         mean_loss = np.mean(np.array(all_losses))

@@ -14,10 +14,13 @@ from io import BytesIO
 from base import database
 import pickle
 from base.Sensor import Sensor
-from preprocessing.series import preprocess_simulation
+from preprocessing.series import preprocess_simulation, process_map_leaks
 class Network:
     def loadEvents(self):
-        path = "F:/manual/Tese/exploratory/wisdom/base/events/network_events_" + self.typeData
+        #path = "F:/manual/Tese/exploratory/wisdom/base/events/network_events_" + self.typeData
+        import os
+        path = os.path.join(os.getcwd(), "wisdom/base/events/","network_events_" + self.typeData)
+
         with open (path, 'rb') as fp:
            self.events = pickle.load(fp)
         return self.events
@@ -56,21 +59,33 @@ class Network:
             self.sensors += self.flowSensors
             self.sensors += self.pressureSensors
             
+            #already saved files
             if load:
                 self.loadEvents()
+            #there is the need to create file events
             else:
                 if typeData == "simulated":
-                    for no_sensor in chosen_sensors:
-                        print("test simulated")
-                        print("no_sensor", no_sensor)
-                        new_df = preprocess_simulation(no_sensor, no_leaks)
-                        self.addSimulatedEvents(new_df)
+                    self.populateSimulatedEvents(chosen_sensors, no_leaks)
                 else:
-                    db, cursor = database.make_connection("infraquinta")
-                    self.addAllEvents(db, cursor)
-                self.dumpEvents()
+                    print("populate real events")
+                    self.populateRealEvents()
+               
             
+    def populateRealEvents(self):
+          db, cursor = database.make_connection("infraquinta")
+          self.addAllEvents(db, cursor)
+          self.dumpEvents()
           
+    def populateSimulatedEvents(self, chosen_sensors, no_leaks):
+        for no_sensor in chosen_sensors:
+            print("test simulated")
+            new_df, id_leak_list = preprocess_simulation(no_sensor, no_leaks)
+            leaks_info = process_map_leaks(id_leak_list) 
+            print("len leaks", len(leaks_info))
+            self.addSimulatedEvents(new_df, leaks_info)
+        self.dumpEvents()
+
+        
     def getSensorNeighbors(self):
         return self.sensorNeighbors
     
@@ -88,7 +103,7 @@ class Network:
         return self.pressureSensorsIds
     
     def getEvents(self):
-        return self.events
+        return self.events.values()
     
     def getEndDate(self):
         return self.end_date_data
@@ -99,16 +114,28 @@ class Network:
     def addEvent(self, event):
         self.events[event.getId()] = event
     
-    def addSimulatedEvents(self, df):
+    def addSimulatedEvents(self, df, leaks_info):
         isLeak = False
+        leak_index = 0
+        start = 0
+        end = 0
+        coef = 0
+        avgFlow = 0
         for index, row in df.iterrows():
-            if row['leak'] == 1:
+            if row['leak'] == 1 and isLeak==False:
                 isLeak = True
-                start = row['time']
+                start = row.name
+                leak_id = list(leaks_info.keys())[leak_index]
+                coef = leaks_info[leak_id]['coef']
+                avgFlow = leaks_info[leak_id]['avgFlow']
+                leak_index += 1
             if isLeak and row['leak'] == 0:
                 isLeak = False
-                end = df['time'].iloc[index]
-                self.addEvent(Event(start, end, "fuga"))
+                end = row.name
+                event = Event(start, end, "fuga", id_event=leak_id)
+                event.setCoef(coef)
+                event.setAvgFlow(avgFlow)
+                self.addEvent(event)
    
     def addAllEvents(self, db, cursor, dump=True):
         query = """
@@ -125,34 +152,48 @@ class Network:
         for i in range(0,size_aux):
             descricao = aux[i][0]
             date = aux[i][1]
-            if descricao == 'Percepcao':
-                try:
-                    #fuga
-                    date = aux[i][1]
+            if date.year == 2018:
+                if descricao == 'Execucao':
                     start = Network.date_N_days_ago(date, 2)
-                    #end vai ser quando for abertura
-                    j = Network.find_open(i, aux, "Abertura")
-                    abertura = Event(aux[j][1], aux[j][1], aux[j][0], []) 
-                    end = aux[j][1]
-                    events = [abertura]
-                    self.addEvent(Event(start, end, "fuga", events))
-                    """
-                    else:
-                        #ocorreu apenas fecho. (reparacao?) nao sei se e' fuga
-                        Event(date, date,"reparo", [])
-                        Network.find_open(i, aux)
-                    """
-                        
-                except IndexError:
-                    # Output expected IndexErrors.
-                    pass
+                    end = date + datetime.timedelta(hours=6)
+                    self.addEvent(Event(start, end, "fuga"))
+            else:
+                if descricao == 'Percepcao':
+                    try:
+                        #fuga
+                        date = aux[i][1]
+                        start = Network.date_N_days_ago(date, 2)
+                        #end vai ser quando for abertura
+                        j = Network.find_open(i, aux, "Abertura")
+                        abertura = Event(aux[j][1], aux[j][1], aux[j][0], []) 
+                        end = aux[j][1]
+                        events = [abertura]
+                        self.addEvent(Event(start, end, "fuga", events))
+                        """
+                        else:
+                            #ocorreu apenas fecho. (reparacao?) nao sei se e' fuga
+                            Event(date, date,"reparo", [])
+                            Network.find_open(i, aux)
+                        """
+                            
+                    except IndexError:
+                        # Output expected IndexErrors.
+                        pass
+                
         if dump:
             self.dumpEvents()
     
   
         
     def dumpEvents(self):
-        path = "F:/manual/Tese/exploratory/wisdom/base/events/network_events_" + self.typeData
+        #filename network_events_simulated
+        #filename network_events_real
+        import os
+        cwd = os.getcwd()
+        path_init = os.path.abspath(os.path.join(cwd, os.pardir))
+        path = os.path.join(path_init, "base/events/","network_events_" + self.typeData)
+
+        #path = "F:/manual/Tese/exploratory/wisdom/base/events/network_events_" + self.typeData
         with open(path, 'wb') as fp:
             pickle.dump(self.events, fp)
    
@@ -169,6 +210,12 @@ class Network:
     def countEvent(self):
         size = len(self.events)    
         return size
+    
+    def getEventById(self, id_event):
+        for ev in self.events:
+            if ev.getId() == id_event:        
+                return ev
+        return None
     
     def findEventType(self, type_event, date):
         size = len(self.events)
@@ -190,8 +237,8 @@ class Network:
     
     def select_events(self, start, end, time):
         if time == 'date':
-            start = datetime.strptime(start, '%d-%m-%Y %H:%M:%S')
-            end = datetime.strptime(end, '%d-%m-%Y %H:%M:%S')
+            start = datetime.datetime.strptime(start, '%d-%m-%Y %H:%M:%S')
+            end = datetime.datetime.strptime(end, '%d-%m-%Y %H:%M:%S')
        
         sevents = list()
         for event in self.events.values():
@@ -277,6 +324,12 @@ class Network:
                     minDate = point
         return minDate
     
+    def in_event(date, events):
+        for event in events:
+            if date >= event.getStart() and date <= event.getEnd():
+                return event
+        return None
+
     def findSubSequenceWithEvent(timeseries, events, time):
         """
         Parameters
@@ -292,20 +345,33 @@ class Network:
 
         """
         i = 0
-        columns = []
         agg = pd.DataFrame()
-        for t in timeseries[time]:
-            for event in events:
-                if t >= event.getStart() and t <= event.getEnd():
-                    columns.append(timeseries.iloc[i,:])
-            i += 1
-        if columns != []:
-            agg = pd.concat(columns, names=['value', 'time'], axis=1)
+        time = list(timeseries.index.values)
+        print("len time", len(time))
+        for t in time:
+                if time == 'time':
+                    t = pd.to_timedelta(t)
+                else:
+                    t = pd.to_datetime(t)
+                event = Network.in_event(t, events)
+                if event != None:
+                    if t >= event.getStart() and t <= event.getEnd():
+                        aux = timeseries.iloc[i,:]
+                        #new_time_index.append(t)
+                        agg = agg.append(aux)
+                    
+                i += 1
+        
         return agg
     
     def findSubSequenceNoEvent(timeseries, events, time):
         newtimeseries = Network.findSubSequenceWithEvent(timeseries, events, time)
-        subsequence = timeseries - newtimeseries
+        #subsequence = timeseries - newtimeseries
+        
+        idx1 = set(timeseries.index)
+        idx2 = set(newtimeseries.index)
+        subsequence = pd.DataFrame(list(idx1 - idx2), columns=timeseries.columns)
+       
         return subsequence
     
     
@@ -320,9 +386,10 @@ def test():
     events = network.dumpEvents()
     """
     
-    network = Network("infraquinta", typeData="simulated", chosen_sensors=['12'],no_leaks=20, load=False)
+    network = Network("infraquinta", typeData="real", chosen_sensors=['12'],no_leaks=20, load=True)
     print("Number of events:", network.countEvent())
     print("events", network.getEvents())
+    print(network.getEvents()[2].getStart())
     
   
    
