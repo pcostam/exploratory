@@ -15,7 +15,10 @@ from scipy.stats import norm
 from unsupervised.Pvalue import Pvalue
 from unsupervised.Stats import Stats
 
-def goodness_of_fit(file, scores, alpha=0.05):
+
+def goodness_of_fit(file, title, scores, alpha=0.05):
+    text = """Tests made on distribution of %s""" % (title)
+    file.append(Text.Text(text))
     distributions = ['norm', 'gamma']
     results = []
     for dist in distributions:
@@ -24,6 +27,7 @@ def goodness_of_fit(file, scores, alpha=0.05):
             k_stat, ks_pvalue = kstest(scores, 'gamma', args=(15.5, 0, 1./7))
         else:
             ks_stat, ks_pvalue = kstest(scores, dist)
+            Stats.check_for_normality(file, scores)
         
         info = dict()
         info["stat_D"] = ks_stat
@@ -40,9 +44,11 @@ def goodness_of_fit(file, scores, alpha=0.05):
             print(text)
             file.append(Text.Text(text))
             if dist == "norm":
+                 file.append(Text.Text("Trying transformations"))
+                 file.append(Text.Text("YeoJonhson")) 
                  scores, mu, std = transform_norm(scores, type_transform="yeojohnson")
                  crit, pvalue = Pvalue.pvalue_norm(mu, std, percentage=0.02)
-                 Stats.check_for_normality(scores)
+                 Stats.check_for_normality(file, scores)
                  
         stats = [item["stat_D"] for item in results]
         p_value = [item["p-value"] for item in results]
