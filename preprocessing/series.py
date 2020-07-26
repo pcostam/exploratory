@@ -195,13 +195,18 @@ def select_data(df, column_time, min_time, max_time):
         df.index = pd.to_datetime(df.index)
         min_time = pd.to_datetime(min_time)
         max_time = pd.to_datetime(max_time)
-   
+    else:
+        print("min_date", min_time)
+        print("max_date", max_time)
+        
     if ((min_time == None) or (max_time == None)):
         #df.reset_index(level=0, inplace=True)
         return df
     else:
         old_df = df.copy()
-      
+        print("df.index", type(df.index))
+        print("min_time", type(min_time))
+        
         df = df[(df.index >= min_time) & (df.index <= max_time)]
         if df.empty:
             return old_df
@@ -234,7 +239,36 @@ def find_gap(df, frequency):
          except KeyError:
              pass
      return res
+  
+def read_df(sensorId, path, start=None, end=None, n_limit=None):
+    #list_df = list()
+    df = pd.DataFrame()
     
+    if n_limit != None:
+        df = pd.read_csv(path, nrows = n_limit)
+        
+    else:
+        df = pd.read_csv(path)
+    
+    df['time'] = pd.to_timedelta(df['time'])
+    print("dftime", df['time'])
+    df.set_index(['time'], drop=True, inplace=True)
+    
+    if start != None and end != None:
+        print("select_data")
+        df = select_data(df, 'time', start, end)
+    
+    minutes = '10min'
+    df = downsample(df, minutes)
+  
+    #if adjustment:
+    #    df = seasonal_adjustment(df, minutes, lag='W')
+    #indexes = find_gap(df, 15)
+    #list_df = np.split(df, indexes)
+    #print("list df", list_df)
+    
+                       
+    return df
 def csv_to_chunks(sensorId, path, column_time='date', start=None, end=None, n_limit=None):
     #list_df = list()
     df = pd.DataFrame()
@@ -372,7 +406,7 @@ def generate_anomalous(idSensor, limit=True, df_to_csv = False):
     return df
  
 
-def generate_normal_simulation(df, column_time='date', start=None, end=None, n_train=None):
+def generate_normal_simulation(df, column_time='date', start=None, end=None, n_train=None, normal_simulation_id=2):
     print("unique columns", pd.unique(df['leak']))
     df = df[(df['leak'] == 0)]  
     print("unique columns", pd.unique(df['leak']))
@@ -382,19 +416,21 @@ def generate_normal_simulation(df, column_time='date', start=None, end=None, n_t
     print("df shape", df.shape)
     return df
    
-def generate_normal(idSensor, column_time='date', start=None, end=None, simulated=False, n_limit=None, df_to_csv =True, to_chunks=True, no_leaks=None):
+def generate_normal(idSensor, column_time='date', start=None, end=None, simulated=False, n_limit=None, df_to_csv =True, to_chunks=True, no_leaks=None, normal_simulation_id=2):
     df = pd.DataFrame()
     if df_to_csv: 
-        init_path = os.path.dirname(os.getcwd())
         path = ""
         if simulated == False:
             path = os.path.join(os.getcwd(), "wisdom/dataset/infraquinta/real/normal/","sensor_" + str(idSensor) + ".csv")
             df = csv_to_chunks(idSensor, path, column_time=column_time, start=start, end=end, n_limit=n_limit)
-   
-        else:      
-             new_df, _ = preprocess_simulation(idSensor, no_leaks)      
-             df = generate_normal_simulation(new_df, column_time=column_time, start=start, end=end, n_train=n_limit)
-  
+        else:     
+             ###### SIMULATION DATA
+             if normal_simulation_id == 2:
+                 new_df, _ = preprocess_simulation_2(idSensor, no_leaks)      
+                 df = generate_normal_simulation(new_df, column_time=column_time, start=start, end=end, n_train=n_limit)
+             elif normal_simulation_id == 1:
+                 df = preprocess_simulation_1(idSensor, no_leaks) 
+                 
           
     else:
         db_connection = 'mysql+pymysql://root:banana@localhost/infraquinta'
@@ -460,12 +496,28 @@ def get_total_min_date(table):
      return res
 
 def process_map_leaks(id_leaks):
+    """
+    Returns coeficient and average flow
+
+    Parameters
+    ----------
+    id_leaks : TYPE
+        DESCRIPTION.
+
+    Returns
+    -------
+    all_leaks : TYPE
+        DESCRIPTION.
+
+    """
     import os
     import re
     conf_file = join(os.path.dirname(__file__), 'setup', 'config.xml')
     root = configuration.read_config(conf_file)
-    path = configuration.get_path_map_leaks(root)
-    new_path = os.path.join(path, 'TabelaArquivoFinal.xlsx')
+    directory = configuration.get_path_map_leaks(root)
+    new_path = os.path.join(os.getcwd(), "wisdom/dataset/simulated/mapeamento_fugas/","TabelaArquivoFinal.xlsx" )
+    #path = os.path.join('F:/manual/Tese/exploratory/', directory )
+    #new_path = os.path.join(path, 'TabelaArquivoFinal.xlsx')
     print("new_path", new_path)
     df = pd.read_excel(new_path, header=0)
     all_leaks = dict()
@@ -475,21 +527,22 @@ def process_map_leaks(id_leaks):
         if no_leak in id_leaks:
             avg_flow = row['Q(m3/h)']	
             coef = row['Coef']
-            all_leaks[no_leak] = {'avgFlow': avg_flow, 'coef':coef}
+            nodeidx = row['No']
+            all_leaks[no_leak] = {'avgFlow': avg_flow, 'coef':coef, 'nodeIndex':nodeidx}
            
         else:
             pass
     return all_leaks
 
     
-
-def preprocess_simulation(idSensor, no_leaks, size=None):
+def preprocess_simulation_2(idSensor, no_leaks, size=None):
     from os.path import dirname
     import re
     import datetime
     conf_file = join(dirname(__file__), 'setup', 'config.xml')
     root = configuration.read_config(conf_file)
     directory = configuration.get_path_simulation(root, simulation="leaks", type_leak="fugas_Q", season=None)
+    path = directory
     seconds_no_leaks = (146*600)*no_leaks
     if size != None and size < seconds_no_leaks:
         raise ValueError("Not possible size")
@@ -497,14 +550,18 @@ def preprocess_simulation(idSensor, no_leaks, size=None):
     columns = list()
     time_passed = 0
     id_leak_list = list()
-    dirFiles = os.listdir(directory)
-    dirFiles.sort(key=lambda f: int(re.sub('\D', '', f)))
+    dirFiles = os.listdir(path)
+    print(dirFiles[:5])
+    print(type(dirFiles))
+    #dirFiles.sort(key=lambda f: int(re.sub('\D', '', f)))
+    print("path", path)
+    print(type(dirFiles))
     for file in dirFiles[:no_leaks]:
             id_leak = re.search(r'\d+', file).group()  
             id_leak_list.append(id_leak)
-            new_path = os.path.join(directory, file)
+            new_path = os.path.join(path, file)
             df = pd.read_csv(new_path)
-            df = df[[idSensor,'leak']]
+            df = df[[str(idSensor),'leak']]
             no_rows = df.shape[0]
             total_seconds = no_rows*600
             times = [datetime.timedelta(seconds=x) for x in range(time_passed,time_passed + total_seconds,600)]
@@ -512,12 +569,32 @@ def preprocess_simulation(idSensor, no_leaks, size=None):
             df['time'] = times
             df = df.rename(columns={idSensor: 'value'})
             columns.append(df)
-            
+   
     agg = pd.concat(columns)
     agg.set_index(['time'], drop=True, inplace=True)
   
     
     return agg, id_leak_list
+
+def preprocess_simulation_1(idSensor, no_leaks, size=None):
+    path = os.path.join(os.getcwd(), "wisdom/dataset/simulated/telegestao/summer/","sensor_%s.csv" % idSensor)
+ 
+    df = read_df(idSensor, path)
+    return df
+
+def preprocess_simulation(idSensor, no_leaks, size=None, normal_simulation_id=2):
+    if normal_simulation_id == 2: 
+        print("NORMAL SIMULATION 2")
+        agg, id_leak_list = preprocess_simulation_2(idSensor, no_leaks, size=size)
+        return agg, id_leak_list
+    
+    elif normal_simulation_id == 1:
+        df = preprocess_simulation_1(idSensor, no_leaks, size=size)
+        return df
+    else:
+        raise ValueError("No such simulation id")
+        
+   
 
 def generate_total_sequence(idSensor, table, start, end, simulated=False, n_limit=None, no_leaks=None):
     """Generates the time series (with anomalies)"""
@@ -525,7 +602,7 @@ def generate_total_sequence(idSensor, table, start, end, simulated=False, n_limi
     print("no_leaks", no_leaks)
     path = ""
     if simulated:
-        df, _ = preprocess_simulation(idSensor, no_leaks=no_leaks)
+        df, _ = preprocess_simulation(idSensor, no_leaks=no_leaks, normal_simulation_id=2)
     else:
         path = os.path.join(os.getcwd(), "wisdom/dataset/infraquinta/real/", "sensor_"+ str(idSensor) + ".csv" )
         df = csv_to_chunks(idSensor, path, start=start, end=end, n_limit=n_limit)
@@ -543,7 +620,16 @@ def change_format(res, frmt, new_frmt):
     res = datetime.datetime.strftime(res, new_frmt)
     
     return res
-def generate_sequences(sensorId, table, column_time='date', start=None, end=None, simulated=False, n_limit = None, df_to_csv = False, no_leaks=None, test=False):
+
+def subtrair_consumos(all_sequence_1, all_sequence_2, all_normal_sequence_1, all_normal_sequence_2):
+    new_all_sequence = pd.DataFrame()
+    new_all_normal_sequence = pd.DataFrame()
+    new_all_sequence['value'] = all_sequence_1['value'].subtract(all_sequence_2['value']) 
+    if not(all_normal_sequence_1.empty) and not(all_normal_sequence_2.empty):
+        new_all_normal_sequence['value'] = all_normal_sequence_1['value'].subtract(all_normal_sequence_2['value']) 
+    return new_all_sequence, new_all_normal_sequence
+
+def generate_sequences(sensorId, table, column_time='date', start=None, end=None, simulated=False, n_limit = None, df_to_csv = False, no_leaks=None, test=False, normal_simulation_id=2):
     normal_sequence = pd.DataFrame()
     test_sequence = pd.DataFrame()
     print("no_leaks generate_sequences", no_leaks)
@@ -576,169 +662,27 @@ def generate_sequences(sensorId, table, column_time='date', start=None, end=None
         else:
             path = init_path + "\\dataset\\infraquinta\\real\\sensor_" + str(sensorId) + ".csv"
                
-        normal_sequence = generate_normal(sensorId, column_time=column_time, start=start, end=end, simulated=simulated, n_limit=n_limit, df_to_csv=df_to_csv, no_leaks=no_leaks)
+        normal_sequence = generate_normal(sensorId, column_time=column_time, start=start, end=end, simulated=simulated, n_limit=n_limit, df_to_csv=df_to_csv, no_leaks=no_leaks, normal_simulation_id = normal_simulation_id)
     
     
     else:
-        normal_sequence = generate_normal(sensorId, column_time=column_time, start=start, end=end,simulated=simulated, n_limit=n_limit, df_to_csv = df_to_csv, no_leaks=no_leaks)
+        normal_sequence = generate_normal(sensorId, column_time=column_time, start=start, end=end,simulated=simulated, n_limit=n_limit, df_to_csv = df_to_csv, no_leaks=no_leaks, normal_simulation_id = normal_simulation_id)
      
     print("normal_sequence.shape", normal_sequence.shape)
     return normal_sequence, test_sequence
 
 
 
-def split_train_test(normal_sequence, all_sequence, n_train, test_split=0.2, gap=0, time="date", blocked=True):
-    #rolling out
-    """
-    Splits sequence into normal sequence(to train) and test sequence
-    (normal and anomalous), making into chunks.
-    
-    Parameters
-    ----------
-    Dataframe
-    n_train : int
-    Size of each chunk.
-    
-    Returns
-    -------
-    None.
-
-    """
-    n_test = get_no_instances_test(n_train, test_split)
-    print("n_train", n_train)
-    print("n_test", n_test)
-    margin = 0
-    train_chunks = list()
-    test_chunks = list()
-    n_records = len(all_sequence)
-    start_date = normal_sequence.index.values[0]
-    
-    while margin < n_records:
-        train = normal_sequence[(normal_sequence.index >= start_date)]
-        if train.empty:
-            break
-        train = train[:n_train]
-        #not enough samples to make train sequence
-        if train.shape[0] < n_train:
-            break
-        #Date that should begin anomalous sequence for test sequence
-        start_date = train.index.values[-1]
-        test = all_sequence[(all_sequence.index > start_date)]
-        test = test[:n_test]   
-        
-        #not enough samples to make test sequence
-        if test.shape[0] < n_test:
-            break
-        #Date that should end anomalous sequence for test sequence
-        #and begin new train chunk
-        end_date = test.index.values[-1]
-        start_date = end_date 
-        #+ datetime.timedelta(days=gap)
-        print("train shape", train.shape)
-        print("train.index", train.index)
-        print("test shape", test.shape)
-        print("test.index", test.index)
-        test_chunks.append(test)
-        train_chunks.append(train)
-     
-        if blocked:
-            margin += n_train + n_test -1
-        else:
-            margin += n_train - 1
-    
-    return train_chunks, test_chunks
 
     
     
     
-    
-
-def get_no_instances_test(n_train, test_split=0.2):
-    """ 
-    Returns number where of necessary instances to make the 
-    percentage test split necessary
-    Parameters
-    ----------
-    n_train : int
-        number of train instances
-    test_split : float, optional
-        percentage of test sequence
-    
-    """
-    return int(round((test_split*n_train)/(1-test_split)))
 
 
-#blocked margin = n_train + n_test
-def rolling_out_cv(X, n_train, test_split=0.2, gap=0, blocked=True):
-    """ With X, divides in train and test chunks """
-    margin = 0
-    train_chunks = list()
-    test_chunks = list()
-    n_records = len(X)
-    start = 0
-    
-    n_test = round((test_split*n_train)/(1-test_split))
-    print("n_val", n_test)
 
-    i = 0
-    while margin < n_records:
-        start = i + margin
-        i += 1
-        stop = start + n_train
-        train = X[start:stop]
-        
-        #index test set
-        start = stop + gap
-        stop = start + n_test
-        
-        if X[start:stop].empty:
-            break
-        
-       
-        test_chunks.append(X[start:stop])
-        train_chunks.append(train)
-        if blocked:
-            margin += n_train + n_test -1
-        else:
-            margin += n_train - 1
-        
-    return train_chunks, test_chunks
     
   
-def test():
-    col_1 = [x for x in range(40)]
-    col_2 = [x for x in range(5, 35)]
-    dt = datetime.datetime(2010, 12, 1)
-    end = datetime.datetime(2010, 12, 30, 23, 59, 59)
-    step = datetime.timedelta(minutes=15)
-    dates_list = []
-    while dt < end:
-        dates_list.append(dt.strftime('%Y-%m-%d %H:%M:%S'))
-        dt += step
-        
-    dates1 = dates_list[:40]
-    dates2 = dates_list[5:35]
-    d = {'value': col_2}
-    d2 = {'value': col_1}
-    df1 = pd.DataFrame(data=d)
-    df1.index = dates2
-    df2 = pd.DataFrame(data=d2)
-    df2.index = dates1
-    #train_chunks, validation_chunks = rolling_out_cv(df1, df2, n_train=6)
-    
-    print("split train test")
-    train_chunks, test_chunks = split_train_test(df1, df2, n_train=6, test_split=0.2, gap=0)
-    for train,test in zip(train_chunks, test_chunks):
-        print("train", train)
-        print("test", test)
-    print("expanding window")
-    train_chunks, test_chunks = expanding_window(df1, df2, 6, test_split=0.2, gap=0, blocked=True)
-    for train,test in zip(train_chunks, test_chunks):
-        print("train", train)
-        print("test", test)
-    
-    
-        
+
 
    
     

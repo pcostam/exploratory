@@ -12,25 +12,34 @@ from keras.optimizers import Adam
 import tuning
 from skopt.space import Integer, Real
 from EncDec import EncDec
-
+import utils
+from preprocessing.splits import rolling_out_cv
+import numpy as np
+import tensorflow
+from keras.backend import clear_session
+import time
+from skopt.space import Integer, Real
+from skopt.utils import use_named_args
+from keras.callbacks import EarlyStopping
 class stacked_BiLSTM(EncDec):        
     #See references
     #https://machinelearningmastery.com/how-to-develop-lstm-models-for-time-series-forecasting/
     def stacked_bilstm_model(X, y, config):
-        toIndex = EncDec.toIndex 
+        toIndex = stacked_BiLSTM.toIndex 
         num_lstm_layers = tuning.get_param(config, toIndex, "num_lstm_layers")
         learning_rate = tuning.get_param(config, toIndex, "learning_rate")
+        no_nodes = tuning.get_param(config, toIndex, "num_nodes")
         
         n_steps = X.shape[1]
         n_features = X.shape[2]
         
         model = Sequential()
-        model.add(Bidirectional(LSTM(50, activation='relu', return_sequences=True, input_shape=(n_steps, n_features))))
+        model.add(Bidirectional(LSTM(no_nodes, activation='relu', return_sequences=True, input_shape=(n_steps, n_features))))
         
         for i in range(num_lstm_layers):
-            name = 'layer_lstm_encoder_{0}'.format(i+1)
-            model.add(Bidirectional(LSTM(50, activation='relu', return_sequences=True, name=name)))
-        model.add(Bidirectional(LSTM(50, activation='relu', return_sequences=False)))
+            name = 'layer_lstm_{0}'.format(i+1)
+            model.add(Bidirectional(LSTM(no_nodes, activation='relu', return_sequences=True, name=name)))
+        model.add(Bidirectional(LSTM(no_nodes, activation='relu', return_sequences=False)))
         model.add(Dense(n_features))
         
         adam = Adam(lr=learning_rate)
@@ -45,20 +54,17 @@ class stacked_BiLSTM(EncDec):
         num_lstm_layers = Integer(low=0, high=5, name='num_lstm_layers') 
         learning_rate = Real(low=1e-4, high=1e-2, prior='log-uniform', name='learning_rate')
         dim_batch_size = Integer(low=64, high=128, name='batch_size')
+        dim_num_nodes = Integer(low=16, high=128, name='num_nodes') 
         dimensions = [num_lstm_layers,
         learning_rate,
-        dim_batch_size] 
+        dim_batch_size,
+        dim_num_nodes] 
         
         default_parameters =[2,
         0.01,
-        128] 
+        128,
+        16] 
         
-        EncDec.dimensions = dimensions
-        EncDec.default_parameters = default_parameters
-      
-        for i in range(0, len(dimensions)):
-              EncDec.toIndex[dimensions[i].name] = i
-             
         return dimensions, default_parameters
     
     dimensions, default_parameters = hyperparam_opt() 
@@ -67,15 +73,73 @@ class stacked_BiLSTM(EncDec):
     def __init__(self, report_name=None):     
         stacked_BiLSTM.input_form = "3D"
         stacked_BiLSTM.output_form = "2D"
-        stacked_BiLSTM.n_seq = None
-        stacked_BiLSTM.n_input = EncDec.n_steps  
         stacked_BiLSTM.h5_file_name = "stackedBiLSTM"
+        stacked_BiLSTM.model_name = "stackedBiLSTM"
         stacked_BiLSTM.type_model_func = stacked_BiLSTM.stacked_bilstm_model
-        
+        stacked_BiLSTM.toIndex = dict()
+        stacked_BiLSTM.no_calls_fitness = 0
         if report_name == None:
             stacked_BiLSTM.report_name = "stacked_bilstm_report"
         else:
             stacked_BiLSTM.report_name = report_name
+            
+        for i in range(0, len(stacked_BiLSTM.dimensions)):
+             stacked_BiLSTM.toIndex[stacked_BiLSTM.dimensions[i].name] = i
+        
+            
+    @use_named_args(dimensions=dimensions)
+    def fitness(num_lstm_layers, learning_rate, batch_size, num_nodes):  
+        init = time.perf_counter()
+        stacked_BiLSTM.parameters = EncDec.parameters
+        print("fitness>>>")
+        stacked_BiLSTM.no_calls_fitness += 1
+        print("Number of calls to fitness", stacked_BiLSTM.no_calls_fitness)
+     
+        n_steps = EncDec.parameters.get_n_steps()
+        n_features = EncDec.parameters.get_n_features() 
+
+        n_seq = EncDec.parameters.get_n_seq()
+        n_input = EncDec.parameters.get_n_input()
+        normal_sequence = EncDec.normal_sequence
+        normal_sequence = utils.fit_transform_data(normal_sequence)
+        print("n_seq", n_seq)
+        print("n_steps", n_steps)
+        
+        #folds = split_folds(normal_sequence, n_folds=3)
+      
+        all_losses = list()
+        #n_train 3 meses
+        #3*31*24*6 = 13392
+        train_chunks, test_chunks = rolling_out_cv(normal_sequence, 13392, test_split=0.2, gap=0, blocked=True)
+        print("NUMBER OF PARTITIONS BAYESIAN", len(train_chunks))
+        #test_split is validation
+        for i in range(0, len(train_chunks)):
+            normal_sequence = train_chunks[i]
+            X_train_full, y_train_full = utils.generate_full(normal_sequence, n_steps, input_form = stacked_BiLSTM.input_form, output_form = stacked_BiLSTM.output_form, n_seq=n_seq,n_input=n_input, n_features=n_features)
+            config = [num_lstm_layers, learning_rate, batch_size, num_nodes]
+            model = stacked_BiLSTM.type_model_func(X_train_full, y_train_full, config) 
+            X_train, y_train, _, _, _, _ = utils.generate_sets(normal_sequence, n_steps,input_form =  stacked_BiLSTM.input_form, output_form = stacked_BiLSTM.output_form, validation=False, n_seq=stacked_BiLSTM.parameters.get_n_seq(),n_input=stacked_BiLSTM.parameters.get_n_input(), n_features=stacked_BiLSTM.parameters.get_n_features())
+            X_val, y_val, _, _, _, _ = utils.generate_sets(test_chunks[i], n_steps,input_form =  stacked_BiLSTM.input_form, output_form = stacked_BiLSTM.output_form, validation=False, n_seq=stacked_BiLSTM.parameters.get_n_seq(),n_input=stacked_BiLSTM.parameters.get_n_input(), n_features=stacked_BiLSTM.parameters.get_n_features())
+            es = EarlyStopping(monitor='val_loss', min_delta = 0.01, mode='min', verbose=1)
+            hist = model.fit(X_train, y_train, validation_data=(X_val, y_val), epochs=100, batch_size= batch_size, callbacks=[es])
+            
+            loss = hist.history['val_loss'][-1]
+            all_losses.append(loss)
+            
+         
+        mean_loss = np.mean(np.array(all_losses))
+        loss = mean_loss
+        del model
+        
+        clear_session()
+        tensorflow.compat.v1.reset_default_graph()
+    
+        end = time.perf_counter()
+        diff = end - init
+        
+        return loss, diff
+    
+    fitness_func = fitness
         
 
 

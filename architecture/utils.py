@@ -19,7 +19,24 @@ import seaborn as sns
 from preprocessing.seasonality import seasonal_adjustment, inverse_difference
 from sklearn.model_selection import KFold
 from scipy.stats import norm
-
+from reconstruction_error import mean_abs_error, chebyshev, abs_error
+from keras.models import model_from_json
+import matplotlib.dates as mdates
+    
+def save_model_json(model, h5_filename):
+    model_json = model.to_json()
+    with open(os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", h5_filename + '_model.json'), "w") as json_file:
+                json_file.write(model_json)
+    model.save_weights(os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", h5_filename +'.h5'))
+    print("Saved model to disk")
+ 
+        
+def load_model_json(h5_filename):
+    model = model_from_json(open(os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", h5_filename + '_model.json')).read())
+    model.load_weights(os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", h5_filename +'.h5'))
+   
+    return model
+    
 def get_mu(vector):
     return np.mean(vector, axis=0)
 
@@ -35,7 +52,9 @@ def get_sigma(vector, mu):
      return sigma
     
 #https://scipy-lectures.org/intro/numpy/operations.html
-def get_error_vector(x_input, x_output, x_inv, scaler, timesteps, n_features): 
+#input train
+#output pred
+def get_error_vector(y_true, y_pred, x_inv, scaler, timesteps, n_features, adjustment=False, metric="mae"): 
     """
     Inverses transform
 
@@ -56,33 +75,46 @@ def get_error_vector(x_input, x_output, x_inv, scaler, timesteps, n_features):
         DESCRIPTION.
 
     """
-    
     #inverse transform for forecasting
-    x_output = inverse_transform(x_output, x_inv, scaler, adjustment=False)
-    x_input = inverse_transform(x_input, x_inv, scaler, adjustment=False)
-        
-    x_input = process_predict(x_input, timesteps, n_features)
-    x_output = process_predict(x_output, timesteps, n_features)   
+    y_pred = inverse_transform(y_pred, x_inv, scaler, adjustment=adjustment)
+    y_true = inverse_transform(y_true, x_inv, scaler, adjustment=adjustment)
+  
+    y_true = process_predict(y_true, timesteps, n_features)
+    y_pred = process_predict(y_pred, timesteps, n_features)   
     
-    vector = np.abs(x_output - x_input)
+    if metric == "mae":
+        metric_func = mean_abs_error
+    elif metric == "chebyshev":
+        metric_func = chebyshev
+    elif metric == "ae":
+        metric_func = abs_error
+        
+    vector = metric_func(y_true, y_pred)
+    print("vector", vector)
     vector = np.squeeze(vector)
     if len(vector.shape) == 1:
         vector = vector.reshape(vector.shape[0], 1)
+   
     return vector
     
  # calculate anormaly score (X-mu)^Tsigma^(-1)(X-mu)
-def anomaly_score(mu, sigma, X, n_features):
+def anomaly_score(mu, sigma, X, n_features, type_score="ML"):
     # D- number of features
     #sigma DxD matrix
     #mu vector D-dimensional
     #X- error vector D-dimensional
     X = X.reshape(X.shape[0], n_features)
-    sigma_inv= np.linalg.inv(sigma)
-    a = np.zeros(X.shape[0])
-    for i in range(0, X.shape[0]):
-            x = X[i, :]
-            a[i] = (x - mu).T@sigma_inv@(x - mu)              
-    return a
+    if type_score == "ML":
+        sigma_inv= np.linalg.inv(sigma)
+        a = np.zeros(X.shape[0])
+        for i in range(0, X.shape[0]):
+                x = X[i, :]
+                a[i] = (x - mu).T@sigma_inv@(x - mu)  
+        return a
+
+    elif type_score == "reconstruction error":
+         return X
+    
     
 
     
@@ -125,7 +157,7 @@ def process_predict(X_pred,  timesteps, n_features):
         X_pred = X_pred.reshape(X_pred.shape[0], n_features)
     print("X_pred.shape 4", X_pred.shape)
     return X_pred
-def plot_training_losses(history):
+def plot_training_losses(rep, history):
     fig, ax = plt.subplots(figsize=(14,6), dpi=80)
     ax.plot(history['loss'], 'b', label='Train', linewidth=2)
     ax.plot(history['val_loss'], 'r', label='Validation', linewidth=2)
@@ -134,44 +166,71 @@ def plot_training_losses(history):
     ax.set_xlabel('Epoch')
     ax.legend(loc='upper right')
     
-    tmpfile = BytesIO()
-    fig.savefig(tmpfile, format='png')
-    encoded = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
-    
+    rep.add_image(fig, "Training losses")
+
     #plt.show()
     
-    return encoded
     
-def plot_bins_loss(title, x, to_fit=None, scale=None, loc=None, bins=20):
+def plot_bins_loss(title, x, rep, to_fit=None, mu=None, std=None, bins=20):
     figure, ax = plt.subplots(figsize=(16,9), dpi=80)
     plt.title(title, fontsize=16)
     sns.distplot(x, kde=True, color='blue')
  
     
     if to_fit == 'normal':
-        sns.distplot(x, fit=norm, kde=False, color='red')
+        xmin, xmax = plt.xlim()
+        x = np.linspace(xmin, xmax, 100)
+        p = norm.pdf(x, mu, std)
+        plt.plot(x, p, 'k', linewidth=2, color="red")
+        
+        
         
     #plt.show()
+    """
     tmpfile = BytesIO()
     figure.savefig(tmpfile, format='png')
     encoded = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
-    return encoded
+    """
+    rep.add_image(figure, title) 
+ 
 
-def plot_series(title, dates, y_true, y_pred, timesteps, n_features):
-    y_true = process_predict(y_true, timesteps, 1)
-    y_pred = process_predict(y_pred, timesteps, 1)   
+# Function that formats the axis labels
+def timeTicks(x, pos):
+    seconds = x / 10**9 # convert nanoseconds to seconds
+    # create datetime object because its string representation is alright
+    d = datetime.timedelta(seconds=seconds)
+    return str(d)
+
+def plot_series(title, dates, y_true, y_pred, timesteps, n_features, rep, x_inv, scaler, adjustment=False):
+    #plot time series with real numbers
+    #inverse transform for forecasting
+    y_pred = inverse_transform(y_pred.reshape(-1, n_features), x_inv, scaler, adjustment=adjustment)
+    y_true = inverse_transform(y_true.reshape(-1, n_features), x_inv, scaler, adjustment=adjustment)
+    y_true = process_predict(y_true, timesteps, n_features)
+    y_pred = process_predict(y_pred, timesteps, n_features)   
+    
+    df_true = pd.DataFrame()
+    df_pred = pd.DataFrame()
+    df_true['value'] = y_true.ravel()
+    df_true.index = dates
+    df_pred['value'] = y_pred.ravel()
+    df_pred.index = dates
+    
+    print("df", type(df_pred.index))
     fig, ax = plt.subplots(figsize=(14,6), dpi=80)
-    plt.plot(dates, y_true, 'b', label="Validation")
-    plt.plot(dates, y_pred, 'r', label="Prediction")
+    fig.autofmt_xdate()
+    index_plot = df_true.index.values 
+    plt.plot(index_plot, df_true['value'],'b', label="Validation")
+    plt.plot(index_plot, df_pred['value'] , 'r', label="Prediction")
+    from matplotlib import ticker
+    formatter = ticker.FuncFormatter(timeTicks)
+    ax.xaxis.set_major_formatter(formatter)
     ax.set_title(title, fontsize=16)
     ax.set_ylabel('Value')
     ax.set_xlabel('Dates')
     ax.legend(loc='upper right')
-    #plt.show()
-    tmpfile = BytesIO()
-    fig.savefig(tmpfile, format='png')
-    encoded = base64.b64encode(tmpfile.getvalue()).decode('utf-8')
-    return encoded
+    plt.show()
+    rep.add_image(fig, title)
 
 
   
@@ -235,9 +294,10 @@ def fit_transform_data(data):
     return scaled
     
 
-def transform_sequence(data, adjustment=True):
+def transform_sequence(data, granularity='15min', lag='W', adjustment=True):
+     print("granularity", granularity)
      if adjustment:
-        data = seasonal_adjustment(data, '15min', lag='W')
+        data = seasonal_adjustment(data, granularity, lag=lag)
      return data
     
     
@@ -251,6 +311,9 @@ def transform_data(data, scaler):
 def inverse_transform(transformed, data, scaler, adjustment=True):
     inverted = scaler.inverse_transform(transformed)
     if adjustment:
+        #difference_seasonality = len(data) - len(inverted)
+        #inverted = inverted[difference_seasonality:]
+        #print("inverted", len(inverted))
         inverted = np.array([inverse_difference(data[i], inverted[i]) for i in range(len(inverted))])
     return inverted 
 
@@ -279,20 +342,13 @@ def preprocess_shapes(data, timesteps, form="3D", input_data=pd.DataFrame(), n_s
     
         return data
        
-    elif form == "2D":
-        if len(input_data.shape) == 3:
-            print("2D input_data", input_data.shape)
-            y_train = input_data[:, :n_features, :]
-        else:
-            data = data.values
-      
-            y_train = data[:, :n_features]
-            
-            #y_train = transform_data(y_train)
-        
-            y_train =  np.squeeze(y_train)
-            y_train = np.reshape(y_train, (y_train.shape[0], n_features))
-         
+    elif form == "2D":  
+        data = data.values  
+        y_train = data[:, :n_features]        
+        #y_train = transform_data(y_train)    
+        y_train =  np.squeeze(y_train)
+        y_train = np.reshape(y_train, (y_train.shape[0], n_features))
+     
         return y_train
     
     elif form == "3D":
@@ -325,18 +381,19 @@ def generate_full_y_train(normal_sequence, n_input, timesteps, n_features):
     return y_train_full
 
 
-def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None, dates=False):       
+def generate_sets(raw, timesteps,input_form ="3D", output_form = "3D", validation=True, n_seq=None, n_input=None, n_features=None, dates=False, n_val_sets=2, train_split=0.8):       
     print(">>>>generate_sets")
     print("N_features", n_features)
     print("raw", len(raw))
     if validation:
-        return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features, dates=dates)
+        return generate_validation(raw, timesteps, input_form=input_form, output_form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features, dates=dates, n_val_sets=n_val_sets, train_split=train_split)
 
     X_train = preprocess(raw, timesteps, form = input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
   
     if output_form == "3D":
         y_train = X_train
     if output_form == "2D":
+        print("2D")
         y_train = preprocess(raw, timesteps, form = output_form, input_data = X_train, n_seq=n_seq, n_input=n_input, n_features=n_features)
     print("generate_sets y_train shape", y_train.shape)
     print("generte_sets X_train shape", X_train.shape)
@@ -358,38 +415,45 @@ def split_features(n_features, X_train):
 
 
  
-def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None, dates=False):
+def generate_validation(X_train_D, timesteps,input_form="3D", output_form="3D",  n_seq=None, n_input=None, n_features=None, dates=False, n_val_sets=2, train_split=0.8):
      print("X_train_D")
      X_train = series_to_supervised(X_train_D, n_in=n_input, dates=dates)
              
      size_X_train = X_train.shape[0]
-     size_train = round(size_X_train*0.8)
+     size_train = round(size_X_train*train_split)
      X_val = X_train.iloc[size_train:, :]
      X_train = X_train.iloc[:size_train, :]
      size_val = round(0.5*X_val.shape[0])
-       
-     X_val_1 = X_val.iloc[:size_val, :]
-     X_val_2 = X_val.iloc[size_val:, :]
-     
-        
+     if n_val_sets == 2:
+         X_val_1 = X_val.iloc[:size_val, :]
+         X_val_2 = X_val.iloc[size_val:, :]
+         
+     elif n_val_sets == 1:
+         X_val_1 = X_val
+         X_val_2 = pd.DataFrame()  
+         
      Xtrain = preprocess_shapes(X_train, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      Xval_1 = preprocess_shapes(X_val_1, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     Xval_2 = preprocess_shapes(X_val_2, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-            
-     
+     if not(X_val_2.empty):
+         Xval_2 = preprocess_shapes(X_val_2, timesteps,  form=input_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     else:
+        Xval_2 = pd.DataFrame()         
+         
      y_train = preprocess_shapes(X_train, timesteps, input_data = X_train, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
      y_val_1 = preprocess_shapes(X_val_1, timesteps, input_data = X_val_1, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     y_val_2 = preprocess_shapes(X_val_2, timesteps, input_data = X_val_2, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
-     
+     if not(X_val_2.empty):
+         y_val_2 = preprocess_shapes(X_val_2, timesteps, input_data = X_val_2, form=output_form, n_seq=n_seq, n_input=n_input, n_features=n_features)
+     else:
+         y_val_2 = None
      print("X_val_1", X_val_1.shape)
      print("y_val_1", y_val_1.shape)
      print("type", type(Xval_1))
-     
+   
      return Xtrain, y_train, Xval_1, y_val_1, Xval_2, y_val_2
  
-def save_parameters(scaler, mu, sigma, timesteps, min_th, filename):
+def save_parameters(scaler, mu, sigma, timesteps, th_min, th_max, filename, fpr, tpr):
     print("save parameters")
-    param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'min_th':min_th, 'scaler': scaler}
+    param = {'mu':mu, 'sigma':sigma, 'timesteps':timesteps, 'th_min': th_min, 'th_max': th_max, 'scaler': scaler, 'fpr': fpr, 'tpr': tpr}
     filename = 'parameters_' + filename + '.pickle'
     path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", filename)
     with open(path, 'wb') as f:  
@@ -397,7 +461,7 @@ def save_parameters(scaler, mu, sigma, timesteps, min_th, filename):
     return True
 
 def load_parameters(filename):
-    global mu, sigma, timesteps, min_th
+    global mu, sigma, timesteps, th_min, th_max
     filename = 'parameters_' + filename + '.pickle'
     path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", filename)
  
@@ -408,74 +472,116 @@ def load_parameters(filename):
     mu = param['mu']
     sigma = param['sigma']
     timesteps = param['timesteps']
-    min_th = param['min_th']
+    th_min = param['th_min']
+    th_max = param['th_max']
     
+    return param
+
+def save_train_parameters(filename, normal_sequence, anormal_sequence, sequence_inv, scaler, history, split):
+    print("save parameters")
+    param = {'normal sequence': normal_sequence, 'anormal sequence': anormal_sequence, 'sequence': sequence_inv, 'scaler': scaler, 'history': history, 'split':split}
+    filename = 'trainparameters_' + filename + '.pickle'
+    path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", filename)
+    with open(path, 'wb') as f:  
+        pickle.dump(param, f, protocol=pickle.HIGHEST_PROTOCOL)
+    return True
+
+def load_train_parameters(filename):
+    filename = 'trainparameters_' + filename + '.pickle'
+    path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", filename)
+ 
+    # Getting back the objects:
+    with open(path, 'rb') as f:  
+        param = pickle.load(f)
+    
+
+    return param
+
+
+def save_cv_parameters(filename, run_losses, run_val_losses):
+    print("save parameters")
+    param = {'run losses': run_losses, 'run val losses': run_val_losses}
+    filename = 'traincvparameters_' + filename + '.pickle'
+    path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", filename)
+    with open(path, 'wb') as f:  
+        pickle.dump(param, f, protocol=pickle.HIGHEST_PROTOCOL)
+    return True
+def load_cv_parameters(filename):
+    filename = 'traincvparameters_' + filename + '.pickle'
+    path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets", filename)
+ 
+    # Getting back the objects:
+    with open(path, 'rb') as f:  
+        param = pickle.load(f)
+    
+
     return param
 
 def get_date(df):
     return df['date']
 
 
-def generate_days(X_train_D, n_input, time, validation=True):   
+def generate_days(X_train_D, n_input, time, validation=True, n_val_sets=2, train_split=0.8):   
     X_train = pd.DataFrame()
     X_train = series_to_supervised(X_train_D, n_in=n_input, dates=True)
     if validation == True:   
        
         size_X_train = X_train.shape[0]
        
-        size_train = round(size_X_train*0.8)
+        size_train = round(size_X_train*train_split)
         X_val = X_train.iloc[size_train:, :]
         X_train = X_train.iloc[:size_train, :]
-       
-        size_val = round(0.5*X_val.shape[0])
-        print("size_val", size_val)
-          
-        X_val_1 = X_val.iloc[:size_val, :]
-        X_val_2 = X_val.iloc[size_val:, :]
-   
-        return X_train.index.values, X_val_1.index.values, X_val_2.index.values
+        
+        if n_val_sets == 2:
+             size_val = round(0.5*X_val.shape[0])
+             X_val_1 = X_val.iloc[:size_val, :]
+             X_val_2 = X_val.iloc[size_val:, :]
+             
+        elif n_val_sets == 1:
+             X_val_1 = X_val
+             X_val_2 = pd.DataFrame()
+           
+      
+    
+        if isinstance(X_train.index, pd.TimedeltaIndex):
+            print("ISISTANCE>>>>>>>>>>>>>>>>>>")
+            Xval2 = None
+            if not(X_val_2.empty):
+                Xval2 = X_val_2.index.to_pytimedelta()
+            return X_train.index.to_pytimedelta(), X_val_1.index.to_pytimedelta(), Xval2 
+        else:
+            Xval2 = None
+            if not(X_val_2.empty):
+                Xval2 = X_val_2.index.values
+            return X_train.index.values, X_val_1.index.values, Xval2
     else:
-        return X_train.index.values
+        if isinstance(X_train.index, pd.TimedeltaIndex):
+            return X_train.index.to_pytimedelta()
+        else:
+            return X_train.index.values
 
 def drop_date(df):
     df = df.drop(['date'], axis = 1)
     return df
 
 
-def make_score(X_test, y_test, y_inv, h5_filename, timesteps, n_features, choose_th=None, time='date'):
-    param = load_parameters(h5_filename)
-    filename = h5_filename + '.h5'
-    current_dir = os.getcwd()
-    print("current dir", current_dir)
-    path = os.path.join(os.getcwd(), "wisdom/gui_margarida/gui/assets",  filename)
-        
-    model = load_model(path) 
+def make_score(X_test, y_test, y_inv, h5_filename, timesteps, n_features, th_min=None, th_max=None, time='date', metric="chebyshev"):   
+    model = load_model_json(h5_filename) 
     
-    mu = param['mu']
-    sigma = param['sigma']
-    timesteps = param['timesteps']
-    scaler = param['scaler']
-    print("mu", mu)
-    print("sigma", sigma)
-    print("timesteps", timesteps)
-    
-    anomalies_th = param['min_th']
-    if choose_th != None:
-        anomalies_th = choose_th
-        
-    print("treshold", anomalies_th)
-      
     print("Predict")
     y_pred = model.predict(X_test)
-
+    
+    param = load_parameters(h5_filename)
+    scaler = param['scaler']
+    print("y_test['value']", y_test['value'].shape)
     ####### INVERSE TRANSFORM
-    vector = get_error_vector(y_test['value'].values.reshape(-1,1), y_pred, y_inv, scaler, timesteps, n_features)
+    vector = get_error_vector(y_test['value'].values.reshape(-1,1), y_pred, y_inv, scaler, timesteps, n_features, metric=metric)
     vector = np.squeeze(vector)
         
     score = anomaly_score(mu, sigma, vector, n_features)
-    return score, anomalies_th
+    return score
 
-def make_prediction(score, X_test, y_test, h5_filename, timesteps, n_features, choose_th=None, time='date'):
+def make_prediction(score, X_test, y_test, h5_filename, timesteps, n_features, th_min, th_max, time='date'):
     values = list()
     dates = list()
     mask = list()
@@ -483,17 +589,37 @@ def make_prediction(score, X_test, y_test, h5_filename, timesteps, n_features, c
     anomalies = 0
     i = 0
     
-   
+    param = load_parameters(h5_filename)
+    mu = param['mu']
+    sigma = param['sigma']
+    timesteps = param['timesteps']
+    scaler = param['scaler']
+    print("mu", mu)
+    print("sigma", sigma)
+    print("timesteps", timesteps)
+     
+    if th_min == None:
+         th_min = param['th_min']
+    if th_max == None:
+         th_max = param['th_max']
+         
     for sc in score:
         date = y_test.index.values[i]
         value = y_test['value'].values[i]
         dates.append(date)
         values.append(value)
-        if sc > choose_th:
-             anomalies += 1
-             mask.append(True)
-        else:
-             mask.append(False)
+        if th_min == None:
+            if sc > th_max:
+                 anomalies += 1
+                 mask.append(True)
+            else:
+                 mask.append(False)
+        elif th_min != None:
+            if sc > th_max or sc < th_min:
+                 anomalies += 1
+                 mask.append(True)
+            else:
+                 mask.append(False)
             
         i += 1
     print("Number of anomalies in detect_anomalies", anomalies)
@@ -502,15 +628,16 @@ def make_prediction(score, X_test, y_test, h5_filename, timesteps, n_features, c
     predict['is_anomaly'] = mask
     if time == 'date':
         dates = pd.to_datetime(dates)
+   
     predict.index = dates
     print("end")
     print("rows predict", predict.shape[0])
     return predict
 
-def detect_anomalies(X_test, y_test, y_inv, h5_filename, timesteps, n_features, choose_th=None, time='date'):    
-    score, anomalies_th = make_score(X_test, y_test, y_inv, h5_filename, timesteps, n_features, choose_th=choose_th, time=time)
-    predict = make_prediction(score, X_test, y_test, h5_filename, timesteps, n_features, choose_th=anomalies_th, time=time)
-    return predict
+def detect_anomalies(X_test, y_test, y_inv, h5_filename, timesteps, n_features, th_min, th_max, time='date', metric="chebyshev"):    
+    score = make_score(X_test, y_test, y_inv, h5_filename, timesteps, n_features, th_min=th_min, th_max=th_max, time=time, metric=metric)
+    predict = make_prediction(score, X_test, y_test, h5_filename, timesteps, n_features, th_min=th_min, th_max=th_max, time=time)
+    return score, predict
 
 def avgAnomalyScore(score, min_th, network, X_test_D):
      i = 0
@@ -587,9 +714,18 @@ def split_folds(data, n_folds=3):
     rows = data.shape[0]
     split = round(rows/3)
     res = []
+    first = 0
     pivot = 0
-    while pivot < rows:
+    while pivot <= rows:
         pivot += split
-        res.append(data[:pivot])
-        data = data[pivot:]
+        res.append(data[first:pivot])
+        first = pivot
+     
+    for fold in res:
+        print("fold shape", fold.shape)
+
     return res
+
+
+def convert_time_rows(time, unit):
+    return True    
