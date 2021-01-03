@@ -1,4 +1,4 @@
-# exploratory
+# Unsupervised Anomaly Detection in Water System Networks using Recurrent Neural Networks
 This was my thesis project where I worked with time series produced by flow and pressure sensors in a water distribution system. The purpose of this work was to automatically detect
 an anomaly.
 Interesting anomalies can be bursts, unusual demands, and illegal consumption.
